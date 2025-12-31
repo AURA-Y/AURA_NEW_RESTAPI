@@ -33,4 +33,4 @@ COPY --from=builder /app/dist ./dist
 EXPOSE 3002
 
 # Start application
-CMD ["bun", "run", "dist/main.js"]
+CMD ["bun", "run", "dist/src/main.js"]
