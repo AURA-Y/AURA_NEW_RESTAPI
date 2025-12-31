@@ -1,28 +1,19 @@
-import {
-  Entity,
-  PrimaryGeneratedColumn,
-  Column,
-  CreateDateColumn,
-  UpdateDateColumn,
-} from 'typeorm';
+import { Entity, PrimaryGeneratedColumn, Column } from 'typeorm';
 
-@Entity('users')
+@Entity('user')
 export class User {
   @PrimaryGeneratedColumn('uuid')
-  id: string;
+  userId: string;
 
-  @Column({ unique: true, length: 50 })
-  username: string;
+  @Column({ type: 'varchar', length: 255, unique: true })
+  email: string;
 
-  @Column()
-  password: string;
+  @Column({ type: 'varchar', length: 255 })
+  userPassword: string;
 
-  @Column({ length: 100 })
-  name: string;
+  @Column({ type: 'varchar', length: 100, unique: true })
+  nickName: string;
 
-  @CreateDateColumn()
-  createdAt: Date;
-
-  @UpdateDateColumn()
-  updatedAt: Date;
+  @Column('text', { array: true, default: [] })
+  roomReportIdxList: string[];
 }

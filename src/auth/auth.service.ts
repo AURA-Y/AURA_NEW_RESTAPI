@@ -27,15 +27,24 @@ export class AuthService {
    * 회원가입
    */
   async register(registerDto: RegisterDto): Promise<AuthResponseDto> {
-    const { username, password, name } = registerDto;
+    const { email, password, nickname } = registerDto;
 
-    // 사용자 이름 중복 확인
-    const existingUser = await this.userRepository.findOne({
-      where: { username },
+    // 이메일 중복 확인
+    const existingEmail = await this.userRepository.findOne({
+      where: { email },
     });
 
-    if (existingUser) {
-      throw new ConflictException('Username already exists');
+    if (existingEmail) {
+      throw new ConflictException('Email already exists');
+    }
+
+    // 닉네임 중복 확인
+    const existingNickname = await this.userRepository.findOne({
+      where: { nickName: nickname },
+    });
+
+    if (existingNickname) {
+      throw new ConflictException('Nickname already exists');
     }
 
     // 비밀번호 해싱
@@ -43,22 +52,22 @@ export class AuthService {
 
     // 사용자 생성
     const user = this.userRepository.create({
-      username,
-      password: hashedPassword,
-      name,
+      email,
+      nickName: nickname,
+      userPassword: hashedPassword,
     });
 
     await this.userRepository.save(user);
 
-    this.logger.log(`New user registered: ${username}`);
+    this.logger.log(`New user registered: ${nickname} (${email})`);
 
     // JWT 토큰 생성
     const accessToken = this.generateToken(user);
 
     return new AuthResponseDto(accessToken, {
-      id: user.id,
-      username: user.username,
-      name: user.name,
+      id: user.userId,
+      username: user.nickName,
+      name: user.nickName,
     });
   }
 
@@ -66,11 +75,11 @@ export class AuthService {
    * 로그인
    */
   async login(loginDto: LoginDto): Promise<AuthResponseDto> {
-    const { username, password } = loginDto;
+    const { email, password } = loginDto;
 
-    // 사용자 조회
+    // 사용자 조회 (이메일로 찾기)
     const user = await this.userRepository.findOne({
-      where: { username },
+      where: { email },
     });
 
     if (!user) {
@@ -78,21 +87,21 @@ export class AuthService {
     }
 
     // 비밀번호 확인
-    const isPasswordValid = await bcrypt.compare(password, user.password);
+    const isPasswordValid = await bcrypt.compare(password, user.userPassword);
 
     if (!isPasswordValid) {
       throw new UnauthorizedException('Invalid credentials');
     }
 
-    this.logger.log(`User logged in: ${username}`);
+    this.logger.log(`User logged in: ${user.email} (${user.nickName})`);
 
     // JWT 토큰 생성
     const accessToken = this.generateToken(user);
 
     return new AuthResponseDto(accessToken, {
-      id: user.id,
-      username: user.username,
-      name: user.name,
+      id: user.userId,
+      username: user.nickName,
+      name: user.nickName,
     });
   }
 
@@ -101,9 +110,9 @@ export class AuthService {
    */
   private generateToken(user: User): string {
     const payload = {
-      sub: user.id,
-      username: user.username,
-      name: user.name,
+      sub: user.userId,
+      username: user.nickName,
+      name: user.nickName,
     };
 
     return this.jwtService.sign(payload);
@@ -113,6 +122,16 @@ export class AuthService {
    * 사용자 ID로 조회 (JWT 검증용)
    */
   async findById(id: string): Promise<User | null> {
-    return this.userRepository.findOne({ where: { id } });
+    return this.userRepository.findOne({ where: { userId: id } });
+  }
+
+  /**
+   * 닉네임 사용 가능 여부 확인
+   */
+  async checkNicknameAvailability(nickname: string): Promise<boolean> {
+    const existingUser = await this.userRepository.findOne({
+      where: { nickName: nickname },
+    });
+    return !existingUser; // 사용자가 없으면 true (사용 가능)
   }
 }
