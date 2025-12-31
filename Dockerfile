@@ -1,30 +1,30 @@
 # Build stage
-FROM node:20-alpine AS builder
+FROM oven/bun:1-alpine AS builder
 
 WORKDIR /app
 
 # Copy package files
-COPY package.json package-lock.json* ./
+COPY package.json bun.lockb* bun.lock* ./
 
 # Install dependencies
-RUN npm ci
+RUN bun install --frozen-lockfile
 
 # Copy source code
 COPY . .
 
 # Build application
-RUN npm run build
+RUN bun run build
 
 # Production stage
-FROM node:20-alpine
+FROM oven/bun:1-alpine
 
 WORKDIR /app
 
 # Copy package files
-COPY package.json package-lock.json* ./
+COPY package.json bun.lockb* bun.lock* ./
 
 # Install production dependencies only
-RUN npm ci --only=production
+RUN bun install --frozen-lockfile --production
 
 # Copy built application from builder
 COPY --from=builder /app/dist ./dist
@@ -33,4 +33,4 @@ COPY --from=builder /app/dist ./dist
 EXPOSE 3002
 
 # Start application
-CMD ["node", "dist/src/main.js"]
+CMD ["bun", "run", "dist/main.js"]
