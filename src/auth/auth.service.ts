@@ -31,7 +31,7 @@ export class AuthService {
 
     // 사용자 이름 중복 확인
     const existingUser = await this.userRepository.findOne({
-      where: { username },
+      where: { nickName: username },
     });
 
     if (existingUser) {
@@ -43,9 +43,8 @@ export class AuthService {
 
     // 사용자 생성
     const user = this.userRepository.create({
-      username,
-      password: hashedPassword,
-      name,
+      nickName: username,
+      userPassword: hashedPassword,
     });
 
     await this.userRepository.save(user);
@@ -56,9 +55,9 @@ export class AuthService {
     const accessToken = this.generateToken(user);
 
     return new AuthResponseDto(accessToken, {
-      id: user.id,
-      username: user.username,
-      name: user.name,
+      id: user.userId,
+      username: user.nickName,
+      name: user.nickName,
     });
   }
 
@@ -70,7 +69,7 @@ export class AuthService {
 
     // 사용자 조회
     const user = await this.userRepository.findOne({
-      where: { username },
+      where: { nickName: username },
     });
 
     if (!user) {
@@ -78,7 +77,7 @@ export class AuthService {
     }
 
     // 비밀번호 확인
-    const isPasswordValid = await bcrypt.compare(password, user.password);
+    const isPasswordValid = await bcrypt.compare(password, user.userPassword);
 
     if (!isPasswordValid) {
       throw new UnauthorizedException('Invalid credentials');
@@ -90,9 +89,9 @@ export class AuthService {
     const accessToken = this.generateToken(user);
 
     return new AuthResponseDto(accessToken, {
-      id: user.id,
-      username: user.username,
-      name: user.name,
+      id: user.userId,
+      username: user.nickName,
+      name: user.nickName,
     });
   }
 
@@ -101,9 +100,9 @@ export class AuthService {
    */
   private generateToken(user: User): string {
     const payload = {
-      sub: user.id,
-      username: user.username,
-      name: user.name,
+      sub: user.userId,
+      username: user.nickName,
+      name: user.nickName,
     };
 
     return this.jwtService.sign(payload);
@@ -113,6 +112,6 @@ export class AuthService {
    * 사용자 ID로 조회 (JWT 검증용)
    */
   async findById(id: string): Promise<User | null> {
-    return this.userRepository.findOne({ where: { id } });
+    return this.userRepository.findOne({ where: { userId: id } });
   }
 }

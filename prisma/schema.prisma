@@ -1,0 +1,38 @@
+generator client {
+  provider = "prisma-client"
+  output   = "../generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+model room {
+  roomId           String    @id @db.VarChar(255)
+  createdAt        DateTime? @default(now()) @db.Timestamptz(6)
+  topic            String    @db.VarChar(500)
+  attendees        String[]  @default([])
+  maxParticipants  Int?      @default(20)
+  token            String?
+  livekitUrl       String?   @db.VarChar(500)
+  master           String    @db.Uuid
+  upload_File_list Json?     @default("[]")
+  user             user      @relation(fields: [master], references: [userId], onDelete: Cascade, onUpdate: NoAction, map: "FK_74e6383b9b46c2e2c4519ae4f5e")
+
+  @@index([master], map: "idx_room_master")
+}
+
+model room_report {
+  reportId  String    @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
+  createdAt DateTime? @default(now()) @db.Timestamptz(6)
+  topic     String    @db.VarChar(500)
+  attendees String[]  @default([])
+}
+
+model user {
+  userId            String   @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
+  userPassword      String   @db.VarChar(255)
+  nickName          String   @db.VarChar(100)
+  roomReportIdxList String[] @default([])
+  room              room[]
+}
