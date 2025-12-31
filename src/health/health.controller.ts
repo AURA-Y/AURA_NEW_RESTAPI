@@ -1,6 +1,6 @@
 import { Controller, Get } from '@nestjs/common';
 
-@Controller('restapi/health')
+@Controller('health')
 export class HealthController {
   @Get()
   health() {
