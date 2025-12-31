@@ -1,7 +1,9 @@
 import {
   Controller,
   Post,
+  Get,
   Body,
+  Param,
   HttpCode,
   HttpStatus,
   ValidationPipe,
@@ -37,5 +39,18 @@ export class AuthController {
     @Body(ValidationPipe) loginDto: LoginDto,
   ): Promise<AuthResponseDto> {
     return this.authService.login(loginDto);
+  }
+
+  /**
+   * 닉네임 중복 확인
+   * GET /auth/check-nickname/:nickname
+   */
+  @Get('check-nickname/:nickname')
+  @HttpCode(HttpStatus.OK)
+  async checkNickname(
+    @Param('nickname') nickname: string,
+  ): Promise<{ available: boolean }> {
+    const available = await this.authService.checkNicknameAvailability(nickname);
+    return { available };
   }
 }
