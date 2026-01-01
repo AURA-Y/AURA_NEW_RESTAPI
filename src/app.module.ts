@@ -2,6 +2,7 @@ import { Module } from '@nestjs/common';
 import { ConfigModule, ConfigService } from '@nestjs/config';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { AuthModule } from './auth/auth.module';
+import { ReportsModule } from './reports/reports.module';
 import { User } from './auth/entities/user.entity';
 import { HealthController } from './health/health.controller';
 import {
@@ -38,6 +39,7 @@ import {
       }),
     }),
     AuthModule,
+    ReportsModule,
   ],
   controllers: [HealthController],
 })

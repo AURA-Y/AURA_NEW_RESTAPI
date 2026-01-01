@@ -3,11 +3,20 @@ export class AuthResponseDto {
 
   user: {
     id: string;
-    username: string;
-    name: string;
+    email: string;
+    nickName: string;
+    roomReportIdxList?: string[];
   };
 
-  constructor(accessToken: string, user: { id: string; username: string; name: string }) {
+  constructor(
+    accessToken: string,
+    user: {
+      id: string;
+      email: string;
+      nickName: string;
+      roomReportIdxList?: string[];
+    },
+  ) {
     this.accessToken = accessToken;
     this.user = user;
   }

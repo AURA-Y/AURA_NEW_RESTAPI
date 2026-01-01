@@ -66,8 +66,9 @@ export class AuthService {
 
     return new AuthResponseDto(accessToken, {
       id: user.userId,
-      username: user.nickName,
-      name: user.nickName,
+      email: user.email,
+      nickName: user.nickName,
+      roomReportIdxList: user.roomReportIdxList || [],
     });
   }
 
@@ -100,8 +101,9 @@ export class AuthService {
 
     return new AuthResponseDto(accessToken, {
       id: user.userId,
-      username: user.nickName,
-      name: user.nickName,
+      email: user.email,
+      nickName: user.nickName,
+      roomReportIdxList: user.roomReportIdxList || [],
     });
   }
 
