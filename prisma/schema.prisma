@@ -32,6 +32,7 @@ model room_report {
 model user {
   userId            String   @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
   userPassword      String   @db.VarChar(255)
+  email             String   @db.VarChar(255)
   nickName          String   @db.VarChar(100)
   roomReportIdxList String[] @default([])
   room              room[]

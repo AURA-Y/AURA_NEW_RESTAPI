@@ -101,8 +101,6 @@ services:
   postgres:
     image: postgres:15-alpine
     environment:
-      POSTGRES_USER: postgres
-      POSTGRES_PASSWORD: postgres
       POSTGRES_DB: aura
     ports:
       - "5432:5432"
@@ -116,8 +114,6 @@ services:
     environment:
       DB_HOST: postgres
       DB_PORT: 5432
-      DB_USERNAME: postgres
-      DB_PASSWORD: postgres
       DB_NAME: aura
       DB_SSL: false
       JWT_SECRET: your-secret-key
