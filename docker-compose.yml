@@ -30,6 +30,11 @@ services:
       - DB_SSL=false
       - JWT_SECRET=your-secret-key-change-this-in-production
       - JWT_EXPIRES_IN=7d
+      - AWS_ACCESS_KEY_ID=${AWS_ACCESS_KEY_ID}
+      - AWS_SECRET_ACCESS_KEY=${AWS_SECRET_ACCESS_KEY}
+      - AWS_REGION=${AWS_REGION:-ap-northeast-2}
+      - AURA_S3_BUCKET=${AURA_S3_BUCKET:-aura-raw-data-bucket}
+      - AURA_S3_PREFIX=${AURA_S3_PREFIX:-meetings/}
     depends_on:
       - postgres
     networks:
