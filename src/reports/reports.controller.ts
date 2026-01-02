@@ -17,7 +17,7 @@ export class ReportsController {
   constructor(private readonly reportsService: ReportsService) {}
 
   // 여러 리포트 조회 (쿼리 파라미터로 ids 전달) - 구체적인 라우트 먼저
-  @Get("batch/by-ids")
+  @Get("list")
   @UseGuards(JwtAuthGuard)
   async findByIds(@Query("ids") ids: string): Promise<RoomReport[]> {
     const reportIds = ids.split(",");
@@ -25,7 +25,7 @@ export class ReportsController {
   }
 
   // S3 파일 다운로드 프록시
-  @Get("download-file")
+  @Get("download")
   @UseGuards(JwtAuthGuard)
   async downloadFile(
     @Query("fileUrl") fileUrl: string,
