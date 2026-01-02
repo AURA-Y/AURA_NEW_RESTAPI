@@ -234,18 +234,15 @@ export class ReportsService {
   }> {
     try {
       const url = new URL(fileUrl);
-      const decodedPathParts = url.pathname
-        .split("/")
-        .filter((p) => p)
-        .map((part) => decodeURIComponent(part));
+      // 쿼리 파라미터 단계에서 이미 한 차례 디코드되므로 여기서는 추가 디코드 없이 원본 키를 사용
+      const pathParts = url.pathname.split("/").filter((p) => p);
+      const normalizedParts =
+        pathParts[0] === this.bucketName ? pathParts.slice(1) : pathParts;
 
-      const pathParts =
-        decodedPathParts[0] === this.bucketName
-          ? decodedPathParts.slice(1)
-          : decodedPathParts;
-
-      const s3Key = pathParts.join("/");
-      const fileName = pathParts[pathParts.length - 1] || "download";
+      const s3Key = normalizedParts.join("/");
+      const fileName = decodeURIComponent(
+        normalizedParts[normalizedParts.length - 1] || "download"
+      );
 
       const command = new GetObjectCommand({
         Bucket: this.bucketName,
