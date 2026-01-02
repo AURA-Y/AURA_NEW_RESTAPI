@@ -234,18 +234,20 @@ export class ReportsService {
   }> {
     try {
       const url = new URL(fileUrl);
-      const decodedPathParts = url.pathname
+      // S3 key는 인코딩된 상태로 저장되므로 디코딩하지 않음
+      const pathParts = url.pathname
         .split("/")
-        .filter((p) => p)
-        .map((part) => decodeURIComponent(part));
+        .filter((p) => p);
 
-      const pathParts =
-        decodedPathParts[0] === this.bucketName
-          ? decodedPathParts.slice(1)
-          : decodedPathParts;
+      // 버킷명이 경로에 포함된 경우 제거
+      const keyParts =
+        pathParts[0] === this.bucketName
+          ? pathParts.slice(1)
+          : pathParts;
 
-      const s3Key = pathParts.join("/");
-      const fileName = pathParts[pathParts.length - 1] || "download";
+      const s3Key = keyParts.join("/");
+      // 파일명은 디코딩해서 사용자에게 표시
+      const fileName = decodeURIComponent(keyParts[keyParts.length - 1] || "download");
 
       const command = new GetObjectCommand({
         Bucket: this.bucketName,
