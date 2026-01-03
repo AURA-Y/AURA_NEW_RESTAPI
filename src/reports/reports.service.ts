@@ -7,7 +7,12 @@ import {
   S3Client,
   GetObjectCommand,
   PutObjectCommand,
+  CreateMultipartUploadCommand,
+  UploadPartCommand,
+  CompleteMultipartUploadCommand,
+  AbortMultipartUploadCommand,
 } from "@aws-sdk/client-s3";
+import { getSignedUrl } from "@aws-sdk/s3-request-presigner";
 import { ConfigService } from "@nestjs/config";
 import { randomUUID } from "crypto";
 
@@ -52,15 +57,16 @@ export class ReportsService {
     this.s3Client = new S3Client({
       region: this.configService.get<string>("AWS_REGION", "ap-northeast-2"),
       credentials: {
-        accessKeyId: this.configService.get<string>("AWS_ACCESS_KEY_ID_S3"),
-        secretAccessKey: this.configService.get<string>(
-          "AWS_SECRET_ACCESS_KEY_S3"
-        ),
+        accessKeyId:
+          this.configService.get<string>("AWS_ACCESS_KEY_ID_S3") ||
+          this.configService.get<string>("AWS_ACCESS_KEY_ID"),
+        secretAccessKey:
+          this.configService.get<string>("AWS_SECRET_ACCESS_KEY_S3") ||
+          this.configService.get<string>("AWS_SECRET_ACCESS_KEY"),
       },
     });
   }
 
-  // 여러 리포트 조회 (reportId 배열로)
   async findByIds(reportIds: string[]): Promise<RoomReport[]> {
     if (!reportIds || reportIds.length === 0) {
       return [];
@@ -72,13 +78,12 @@ export class ReportsService {
     });
   }
 
-  // 리포트 생성 (메타만)
   async create(reportData: Partial<RoomReport>): Promise<RoomReport> {
     const report = this.reportsRepository.create(reportData);
     return this.reportsRepository.save(report);
   }
 
-  // 파일을 S3에 업로드하고 메타데이터 반환
+  // 기존 프록시 업로드 (multipart/form-data)
   async uploadFilesToS3(
     files: Array<{
       buffer: Buffer;
@@ -121,7 +126,91 @@ export class ReportsService {
     return results;
   }
 
-  // 보고서 생성: DB 메타 저장 + S3 JSON 기록
+  // 멀티파트 업로드 시작 (presigned)
+  async startMultipartUpload(fileName: string, fileType: string) {
+    const fileId = randomUUID();
+    const now = new Date();
+    const safeName = encodeURIComponent(fileName);
+    const key = `${this.uploadPrefix}${now.getFullYear()}/${String(
+      now.getMonth() + 1
+    ).padStart(2, "0")}/${fileId}-${safeName}`;
+
+    const command = new CreateMultipartUploadCommand({
+      Bucket: this.bucketName,
+      Key: key,
+      ContentType: fileType,
+    });
+
+    const res = await this.s3Client.send(command);
+    const uploadId = res.UploadId;
+    if (!uploadId) {
+      throw new Error("Failed to create multipart upload");
+    }
+
+    const region = this.configService.get<string>("AWS_REGION", "ap-northeast-2");
+    const fileUrl = `https://${this.bucketName}.s3.${region}.amazonaws.com/${key}`;
+
+    return { uploadId, key, fileId, fileUrl };
+  }
+
+  // 파트별 presigned URL 발급
+  async getPresignedPartUploadUrl(params: {
+    uploadId: string;
+    key: string;
+    partNumber: number;
+    fileType: string;
+  }) {
+    const command = new UploadPartCommand({
+      Bucket: this.bucketName,
+      Key: params.key,
+      UploadId: params.uploadId,
+      PartNumber: params.partNumber,
+    });
+
+    const presignedUrl = await getSignedUrl(this.s3Client, command, {
+      expiresIn: 300,
+    });
+
+    return { presignedUrl };
+  }
+
+  // 멀티파트 업로드 완료
+  async completeMultipartUpload(params: {
+    uploadId: string;
+    key: string;
+    parts: { partNumber: number; eTag: string }[];
+  }) {
+    const command = new CompleteMultipartUploadCommand({
+      Bucket: this.bucketName,
+      Key: params.key,
+      UploadId: params.uploadId,
+      MultipartUpload: {
+        Parts: params.parts.map((p) => ({
+          ETag: p.eTag,
+          PartNumber: p.partNumber,
+        })),
+      },
+    });
+
+    await this.s3Client.send(command);
+
+    const region = this.configService.get<string>("AWS_REGION", "ap-northeast-2");
+    const fileUrl = `https://${this.bucketName}.s3.${region}.amazonaws.com/${params.key}`;
+
+    return { fileUrl };
+  }
+
+  async abortMultipartUpload(params: { uploadId: string; key: string }) {
+    const command = new AbortMultipartUploadCommand({
+      Bucket: this.bucketName,
+      Key: params.key,
+      UploadId: params.uploadId,
+    });
+    await this.s3Client.send(command);
+    return { aborted: true };
+  }
+
+  // 보고서 생성: DB 메타 + S3 JSON 기록
   async createReport(payload: {
     topic: string;
     summary?: string;
@@ -133,9 +222,8 @@ export class ReportsService {
     const createdAt = payload.createdAt || new Date().toISOString();
     const summary =
       payload.summary ||
-      "회의 요약(목데이터): 회의 종료 시점에 자동 생성된 예시 텍스트입니다.";
+      "회의 요약(목데이터): 회의 종료 시점에 자동 생성됩니다.";
 
-    // DB 메타 저장
     const meta = this.reportsRepository.create({
       reportId,
       createdAt: new Date(createdAt),
@@ -144,7 +232,6 @@ export class ReportsService {
     });
     await this.reportsRepository.save(meta);
 
-    // S3 JSON 저장
     const details: ReportDetails = {
       reportId,
       createdAt,
@@ -170,7 +257,6 @@ export class ReportsService {
     );
   }
 
-  // 회의 종료 시 요약/참석자 등 업데이트
   async finalizeReport(
     reportId: string,
     data: Partial<ReportDetails>
@@ -193,7 +279,6 @@ export class ReportsService {
     return updated;
   }
 
-  // 보고서를 현재 사용자에 연결
   async attachReportToUser(userId: string, reportId: string) {
     const user = await this.userRepository.findOne({ where: { userId } });
     if (!user) {
@@ -206,7 +291,6 @@ export class ReportsService {
     return user.roomReportIdxList;
   }
 
-  // S3에서 리포트 상세 정보 가져오기
   async getReportDetailsFromS3(reportId: string): Promise<any> {
     const s3Key = `reports/${reportId}.json`;
 
@@ -226,7 +310,6 @@ export class ReportsService {
     }
   }
 
-  // S3에서 파일 다운로드
   async downloadFileFromS3(fileUrl: string): Promise<{
     stream: any;
     fileName: string;
@@ -234,7 +317,6 @@ export class ReportsService {
   }> {
     try {
       const url = new URL(fileUrl);
-      // 쿼리 파라미터 단계에서 이미 한 차례 디코드되므로 여기서는 추가 디코드 없이 원본 키를 사용
       const pathParts = url.pathname.split("/").filter((p) => p);
       const normalizedParts =
         pathParts[0] === this.bucketName ? pathParts.slice(1) : pathParts;
@@ -250,7 +332,6 @@ export class ReportsService {
       });
 
       const response = await this.s3Client.send(command);
-
       const contentType = response.ContentType || "application/octet-stream";
 
       return {
