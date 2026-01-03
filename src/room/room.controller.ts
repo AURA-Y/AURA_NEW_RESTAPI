@@ -45,11 +45,6 @@ export class RoomController {
     return this.roomService.addAttendee(roomId, req.user.id);
   }
 
-  @Post(":roomId/leave")
-  async leaveRoom(@Param("roomId") roomId: string, @Request() req) {
-    return this.roomService.removeAttendee(roomId, req.user.id);
-  }
-
   @Get(":roomId/role")
   async checkUserRole(@Param("roomId") roomId: string, @Request() req) {
     return this.roomService.checkUserRole(roomId, req.user.id);
