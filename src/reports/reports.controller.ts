@@ -2,6 +2,7 @@ import {
   Controller,
   Get,
   Post,
+  Patch,
   Delete,
   Param,
   Query,
@@ -88,6 +89,16 @@ export class ReportsController {
   @UseGuards(JwtAuthGuard)
   async abortMultipart(@Body() body: { uploadId: string; key: string }) {
     return this.reportsService.abortMultipartUpload(body);
+  }
+
+  // 보고서 요약 업데이트
+  @Patch(":id/summary")
+  @UseGuards(JwtAuthGuard)
+  async updateReportSummary(
+    @Param("id") id: string,
+    @Body() body: { summary: string }
+  ) {
+    return this.reportsService.updateReportSummary(id, body.summary);
   }
 
   @Delete(":id")

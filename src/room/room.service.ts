@@ -12,6 +12,7 @@ export interface CreateRoomDto {
   topic: string;
   description?: string;
   master: string;
+  reportId?: string;
   attendees?: string[];
   maxParticipants?: number;
   token?: string;
@@ -32,6 +33,7 @@ export class RoomService {
       topic: data.topic,
       description: data.description,
       master: data.master,
+      reportId: data.reportId,
       attendees: data.attendees || [],
       maxParticipants: data.maxParticipants || 20,
       token: data.token,
@@ -89,5 +91,16 @@ export class RoomService {
 
     room.attendees = room.attendees.filter((id) => id !== userId);
     return this.roomRepository.save(room);
+  }
+
+  async checkUserRole(roomId: string, userId: string): Promise<{ isMaster: boolean; role: 'master' | 'attendee' }> {
+    const room = await this.getRoomById(roomId);
+
+    const isMaster = room.master === userId;
+
+    return {
+      isMaster,
+      role: isMaster ? 'master' : 'attendee',
+    };
   }
 }

@@ -285,6 +285,19 @@ export class ReportsService {
     return updated;
   }
 
+  async updateReportSummary(
+    reportId: string,
+    summary: string
+  ): Promise<ReportDetails> {
+    const current = await this.getReportDetailsFromS3(reportId);
+    const updated: ReportDetails = {
+      ...current,
+      summary,
+    };
+    await this.saveReportDetailsToS3(updated);
+    return updated;
+  }
+
   async attachReportToUser(userId: string, reportId: string) {
     const user = await this.userRepository.findOne({ where: { userId } });
     if (!user) {

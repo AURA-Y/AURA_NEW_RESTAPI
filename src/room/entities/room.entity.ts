@@ -48,6 +48,9 @@ export class Room {
   @Column({ type: 'uuid' })
   master: string;
 
+  @Column({ type: 'uuid', nullable: true })
+  reportId: string;
+
   @ManyToOne(() => User)
   @JoinColumn({ name: 'master' })
   masterUser: User;

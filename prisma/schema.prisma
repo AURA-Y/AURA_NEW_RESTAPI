@@ -18,6 +18,7 @@ model room {
   token            String?
   livekitUrl       String?   @db.VarChar(500)
   master           String    @db.Uuid
+  reportId         String?   @db.Uuid
   upload_File_list Json?     @default("[]")
   user             user      @relation(fields: [master], references: [userId], onDelete: Cascade, onUpdate: NoAction, map: "FK_74e6383b9b46c2e2c4519ae4f5e")
 
