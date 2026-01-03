@@ -26,6 +26,14 @@ class ReportFileDto {
 }
 
 export class CreateReportDto {
+  @IsOptional()
+  @IsString()
+  reportId?: string;
+
+  @IsOptional()
+  @IsString()
+  folderId?: string;
+
   @IsString()
   topic: string;
 

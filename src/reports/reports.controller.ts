@@ -42,10 +42,13 @@ export class ReportsController {
   // 멀티파트 업로드 시작 (presigned)
   @Post("multipart/start")
   @UseGuards(JwtAuthGuard)
-  async startMultipart(@Body() body: { fileName: string; fileType: string }) {
+  async startMultipart(
+    @Body() body: { fileName: string; fileType: string; folderId?: string }
+  ) {
     return this.reportsService.startMultipartUpload(
       body.fileName,
-      body.fileType || "application/octet-stream"
+      body.fileType || "application/octet-stream",
+      body.folderId
     );
   }
 
