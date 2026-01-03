@@ -12,6 +12,7 @@ model room {
   roomId           String    @id @db.VarChar(255)
   createdAt        DateTime? @default(now()) @db.Timestamptz(6)
   topic            String    @db.VarChar(500)
+  description      String?   @db.VarChar(1000)
   attendees        String[]  @default([])
   maxParticipants  Int?      @default(20)
   token            String?
