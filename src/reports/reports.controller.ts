@@ -2,6 +2,7 @@ import {
   Controller,
   Get,
   Post,
+  Delete,
   Param,
   Query,
   Body,
@@ -87,6 +88,16 @@ export class ReportsController {
   @UseGuards(JwtAuthGuard)
   async abortMultipart(@Body() body: { uploadId: string; key: string }) {
     return this.reportsService.abortMultipartUpload(body);
+  }
+
+  @Delete(":id")
+  @UseGuards(JwtAuthGuard)
+  async deleteReport(@Param("id") id: string, @Req() req: Request) {
+    const userId = (req as any).user?.id;
+    if (!userId) {
+      throw new Error("userId is required from token");
+    }
+    return this.reportsService.deleteReport(id, userId);
   }
 
   // 보고서 생성: DB 메타 + S3 JSON 기록
