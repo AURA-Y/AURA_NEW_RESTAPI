@@ -1,4 +1,9 @@
-import { Injectable, Logger, NotFoundException } from "@nestjs/common";
+import {
+  ForbiddenException,
+  Injectable,
+  Logger,
+  NotFoundException,
+} from "@nestjs/common";
 import { InjectRepository } from "@nestjs/typeorm";
 import { Repository, In } from "typeorm";
 import { RoomReport } from "../room/entities/room-report.entity";
@@ -11,6 +16,7 @@ import {
   UploadPartCommand,
   CompleteMultipartUploadCommand,
   AbortMultipartUploadCommand,
+  DeleteObjectCommand,
 } from "@aws-sdk/client-s3";
 import { getSignedUrl } from "@aws-sdk/s3-request-presigner";
 import { ConfigService } from "@nestjs/config";
@@ -343,5 +349,66 @@ export class ReportsService {
       this.logger.error(`Failed to download from S3. url=${fileUrl}`, error as Error);
       throw new NotFoundException(`File not found in S3: ${fileUrl}`);
     }
+  }
+
+  async deleteReport(reportId: string, userId: string) {
+    const user = await this.userRepository.findOne({ where: { userId } });
+    if (!user) {
+      throw new NotFoundException(`User not found: ${userId}`);
+    }
+    if (!user.roomReportIdxList?.includes(reportId)) {
+      throw new ForbiddenException("Not allowed to delete this report");
+    }
+
+    // S3 JSON + 첨부 삭제
+    let details: ReportDetails | null = null;
+    try {
+      details = await this.getReportDetailsFromS3(reportId);
+    } catch (error) {
+      this.logger.warn(`Report details JSON not found for ${reportId}, continue delete`);
+    }
+
+    if (details?.uploadFileList) {
+      for (const file of details.uploadFileList) {
+        try {
+          const url = new URL(file.fileUrl);
+          const pathParts = url.pathname.split("/").filter((p) => p);
+          const normalized =
+            pathParts[0] === this.bucketName ? pathParts.slice(1) : pathParts;
+          const key = normalized.join("/");
+          await this.s3Client.send(
+            new DeleteObjectCommand({
+              Bucket: this.bucketName,
+              Key: key,
+            })
+          );
+        } catch (err) {
+          this.logger.warn(`Failed to delete attachment ${file.fileUrl}: ${err}`);
+        }
+      }
+    }
+
+    // JSON 삭제
+    try {
+      await this.s3Client.send(
+        new DeleteObjectCommand({
+          Bucket: this.bucketName,
+          Key: `${this.reportsPrefix}${reportId}.json`,
+        })
+      );
+    } catch (err) {
+      this.logger.warn(`Failed to delete report JSON for ${reportId}: ${err}`);
+    }
+
+    // DB 메타 삭제
+    await this.reportsRepository.delete({ reportId });
+
+    // 사용자 목록에서 제거
+    user.roomReportIdxList = (user.roomReportIdxList || []).filter(
+      (id) => id !== reportId
+    );
+    await this.userRepository.save(user);
+
+    return { deleted: true };
   }
 }
