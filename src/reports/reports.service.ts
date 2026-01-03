@@ -133,13 +133,12 @@ export class ReportsService {
   }
 
   // 멀티파트 업로드 시작 (presigned)
-  async startMultipartUpload(fileName: string, fileType: string) {
+  async startMultipartUpload(fileName: string, fileType: string, folderId?: string) {
     const fileId = randomUUID();
     const now = new Date();
     const safeName = encodeURIComponent(fileName);
-    const key = `${this.uploadPrefix}${now.getFullYear()}/${String(
-      now.getMonth() + 1
-    ).padStart(2, "0")}/${fileId}-${safeName}`;
+    const baseFolder = folderId || `${now.getFullYear()}/${String(now.getMonth() + 1).padStart(2, "0")}`;
+    const key = `${this.uploadPrefix}${baseFolder}/${fileId}-${safeName}`;
 
     const command = new CreateMultipartUploadCommand({
       Bucket: this.bucketName,
