@@ -96,9 +96,13 @@ export class ReportsController {
   @UseGuards(JwtAuthGuard)
   async updateReportSummary(
     @Param("id") id: string,
-    @Body() body: { summary: string }
+    @Body() body: { summary: string; roomId?: string }
   ) {
-    return this.reportsService.updateReportSummary(id, body.summary);
+    return this.reportsService.updateReportSummary(
+      id,
+      body.summary,
+      body.roomId
+    );
   }
 
   @Delete(":id")
@@ -137,7 +141,10 @@ export class ReportsController {
   // 회의 종료 등으로 회의록 확정 (목데이터/추후 LLM용)
   @Post(":id/finalize")
   @UseGuards(JwtAuthGuard)
-  async finalizeReport(@Param("id") id: string, @Body() body: Partial<CreateReportDto>) {
+  async finalizeReport(
+    @Param("id") id: string,
+    @Body() body: Partial<CreateReportDto>
+  ) {
     const updated = await this.reportsService.finalizeReport(id, body as any);
     return updated;
   }
