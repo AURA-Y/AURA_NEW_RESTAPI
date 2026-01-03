@@ -33,6 +33,7 @@ export interface FileInfo {
 export interface ReportDetails {
   reportId: string;
   createdAt: string;
+  folderId?: string;
   topic: string;
   summary: string;
   attendees: string[];
@@ -133,12 +134,22 @@ export class ReportsService {
   }
 
   // 멀티파트 업로드 시작 (presigned)
-  async startMultipartUpload(fileName: string, fileType: string, folderId?: string) {
+  async startMultipartUpload(
+    fileName: string,
+    fileType: string,
+    userId: string,
+    folderId?: string,
+    reportId?: string
+  ) {
     const fileId = randomUUID();
     const now = new Date();
     const safeName = encodeURIComponent(fileName);
-    const baseFolder = folderId || `${now.getFullYear()}/${String(now.getMonth() + 1).padStart(2, "0")}`;
-    const key = `${this.uploadPrefix}${baseFolder}/${fileId}-${safeName}`;
+    const baseFolder =
+      folderId ||
+      `${now.getFullYear()}/${String(now.getMonth() + 1).padStart(2, "0")}/${String(
+        now.getDate()
+      ).padStart(2, "0")}/${userId}/${reportId || randomUUID()}`;
+    const key = `${this.uploadPrefix}${baseFolder}/files/${fileId}-${safeName}`;
 
     const command = new CreateMultipartUploadCommand({
       Bucket: this.bucketName,
@@ -155,7 +166,7 @@ export class ReportsService {
     const region = this.configService.get<string>("AWS_REGION", "ap-northeast-2");
     const fileUrl = `https://${this.bucketName}.s3.${region}.amazonaws.com/${key}`;
 
-    return { uploadId, key, fileId, fileUrl };
+    return { uploadId, key, fileId, fileUrl, folderId: baseFolder };
   }
 
   // 파트별 presigned URL 발급
@@ -217,14 +228,23 @@ export class ReportsService {
 
   // 보고서 생성: DB 메타 + S3 JSON 기록
   async createReport(payload: {
+    reportId?: string;
+    folderId?: string;
+    userId: string;
     topic: string;
     summary?: string;
     attendees: string[];
     uploadFileList: FileInfo[];
     createdAt?: string;
   }): Promise<ReportDetails> {
-    const reportId = randomUUID();
+    const reportId = payload.reportId || randomUUID();
     const createdAt = payload.createdAt || new Date().toISOString();
+    const createdDate = new Date(createdAt);
+    const folderId =
+      payload.folderId ||
+      `${createdDate.getFullYear()}/${String(createdDate.getMonth() + 1).padStart(2, "0")}/${String(
+        createdDate.getDate()
+      ).padStart(2, "0")}/${payload.userId || "unknown"}/${reportId}`;
     const summary =
       payload.summary ||
       "회의 요약(목데이터): 회의 종료 시점에 자동 생성됩니다.";
@@ -240,6 +260,7 @@ export class ReportsService {
     const details: ReportDetails = {
       reportId,
       createdAt,
+      folderId,
       topic: payload.topic,
       summary,
       attendees: payload.attendees,
@@ -251,15 +272,19 @@ export class ReportsService {
   }
 
   async saveReportDetailsToS3(details: ReportDetails) {
-    const key = `${this.reportsPrefix}${details.reportId}.json`;
-    await this.s3Client.send(
-      new PutObjectCommand({
-        Bucket: this.bucketName,
-        Key: key,
-        Body: JSON.stringify(details, null, 2),
-        ContentType: "application/json",
-      })
-    );
+    const newKey = `${this.uploadPrefix}${details.folderId || details.reportId}/report.json`;
+    const legacyKey = `${this.reportsPrefix}${details.reportId}.json`;
+    const payload = JSON.stringify(details, null, 2);
+    for (const key of [newKey, legacyKey]) {
+      await this.s3Client.send(
+        new PutObjectCommand({
+          Bucket: this.bucketName,
+          Key: key,
+          Body: payload,
+          ContentType: "application/json",
+        })
+      );
+    }
   }
 
   async finalizeReport(
@@ -297,22 +322,35 @@ export class ReportsService {
   }
 
   async getReportDetailsFromS3(reportId: string): Promise<any> {
-    const s3Key = `reports/${reportId}.json`;
+    const tryKeys = [
+      `${this.uploadPrefix}${reportId}/report.json`,
+      `${this.reportsPrefix}${reportId}.json`,
+    ];
 
-    try {
-      const command = new GetObjectCommand({
-        Bucket: this.bucketName,
-        Key: s3Key,
-      });
+    for (const key of tryKeys) {
+      try {
+        const command = new GetObjectCommand({
+          Bucket: this.bucketName,
+          Key: key,
+        });
 
-      const response = await this.s3Client.send(command);
-      const bodyContents = await response.Body.transformToString();
-      return JSON.parse(bodyContents);
-    } catch (error) {
-      throw new NotFoundException(
-        `Report details not found in S3 for ID ${reportId}`
-      );
+        const response = await this.s3Client.send(command);
+        const bodyContents = await response.Body.transformToString();
+        const parsed = JSON.parse(bodyContents);
+        if (!parsed.folderId && key.startsWith(this.uploadPrefix)) {
+          parsed.folderId = key
+            .replace(this.uploadPrefix, "")
+            .replace(/\/report\.json$/, "");
+        }
+        return parsed;
+      } catch (error) {
+        this.logger.warn(`Report JSON not found at key=${key}, try next`);
+      }
     }
+
+    throw new NotFoundException(
+      `Report details not found in S3 for ID ${reportId}`
+    );
   }
 
   async downloadFileFromS3(fileUrl: string): Promise<{
@@ -387,16 +425,24 @@ export class ReportsService {
       }
     }
 
-    // JSON 삭제
-    try {
-      await this.s3Client.send(
-        new DeleteObjectCommand({
-          Bucket: this.bucketName,
-          Key: `${this.reportsPrefix}${reportId}.json`,
-        })
-      );
-    } catch (err) {
-      this.logger.warn(`Failed to delete report JSON for ${reportId}: ${err}`);
+    // JSON 삭제 (신규 + 레거시)
+    const jsonKeys = [
+      details?.folderId
+        ? `${this.uploadPrefix}${details.folderId}/report.json`
+        : `${this.uploadPrefix}${reportId}/report.json`,
+      `${this.reportsPrefix}${reportId}.json`,
+    ];
+    for (const key of jsonKeys) {
+      try {
+        await this.s3Client.send(
+          new DeleteObjectCommand({
+            Bucket: this.bucketName,
+            Key: key,
+          })
+        );
+      } catch (err) {
+        this.logger.warn(`Failed to delete report JSON for ${reportId} at ${key}: ${err}`);
+      }
     }
 
     // DB 메타 삭제

@@ -43,12 +43,19 @@ export class ReportsController {
   @Post("multipart/start")
   @UseGuards(JwtAuthGuard)
   async startMultipart(
-    @Body() body: { fileName: string; fileType: string; folderId?: string }
+    @Body() body: { fileName: string; fileType: string; folderId?: string; reportId?: string },
+    @Req() req: Request
   ) {
+    const userId = (req as any).user?.id;
+    if (!userId) {
+      throw new Error("userId is required from token");
+    }
     return this.reportsService.startMultipartUpload(
       body.fileName,
       body.fileType || "application/octet-stream",
-      body.folderId
+      userId,
+      body.folderId,
+      body.reportId
     );
   }
 
@@ -106,8 +113,12 @@ export class ReportsController {
   // 보고서 생성: DB 메타 + S3 JSON 기록
   @Post()
   @UseGuards(JwtAuthGuard)
-  async createReport(@Body() body: CreateReportDto) {
-    const details = await this.reportsService.createReport(body);
+  async createReport(@Body() body: CreateReportDto, @Req() req: Request) {
+    const userId = (req as any).user?.id;
+    if (!userId) {
+      throw new Error("userId is required from token");
+    }
+    const details = await this.reportsService.createReport({ ...body, userId });
     return details;
   }
 
