@@ -30,7 +30,7 @@ export class ReportsController {
   @UseInterceptors(
     FilesInterceptor("files", 10, {
       storage: multer.memoryStorage(),
-      limits: { fileSize: 10 * 1024 * 1024 },
+      limits: { fileSize: 100 * 1024 * 1024 },
     })
   )
   async uploadFiles(@UploadedFiles() files: any[]) {
