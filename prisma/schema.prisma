@@ -1,11 +1,10 @@
 generator client {
-  provider = "prisma-client"
+  provider = "prisma-client-js"
   output   = "../generated/prisma"
 }
 
 datasource db {
   provider = "postgresql"
-  url = env("DATABASE_URL")
 }
 
 model room {
@@ -35,8 +34,8 @@ model room_report {
 model user {
   userId            String   @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
   userPassword      String   @db.VarChar(255)
-  email             String   @db.VarChar(255)
-  nickName          String   @db.VarChar(100)
+  email             String   @unique(map: "UQ_e12875dfb3b1d92d7d7c5377e22") @db.VarChar(255)
+  nickName          String   @unique(map: "UQ_f15a1d20dcbcde42b43563aaecb") @db.VarChar(100)
   roomReportIdxList String[] @default([])
   room              room[]
 }
