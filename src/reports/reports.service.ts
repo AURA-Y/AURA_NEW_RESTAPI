@@ -329,38 +329,29 @@ export class ReportsService {
   ): Promise<ReportDetails> {
     const current = await this.getReportDetailsFromS3(reportId);
 
-    // roomId가 제공되면 attendees를 userId에서 nickname으로 변환
-    let attendeesNicknames: string[] = current.attendees || [];
+    // roomId가 제공되면 room에서 attendees 가져오기 (이미 nickname으로 저장됨)
+    let attendees: string[] = current.attendees || [];
 
     if (roomId) {
       try {
-        // room.attendees에서 userId 배열 가져오기
         const room = await this.roomRepository.findOne({ where: { roomId } });
 
         if (room && room.attendees && room.attendees.length > 0) {
-          // userIds를 nicknames로 변환
-          const users = await this.userRepository.find({
-            where: { userId: In(room.attendees) },
-          });
-
-          // userId -> nickname 매핑
-          attendeesNicknames = room.attendees.map((userId) => {
-            const user = users.find((u) => u.userId === userId);
-            return user ? user.nickName : userId; // nickname 없으면 userId 사용
-          });
+          // room.attendees는 이미 nickname으로 저장되어 있음
+          attendees = room.attendees;
         }
       } catch (error) {
         this.logger.warn(
-          `Failed to convert attendees to nicknames: ${error.message}`
+          `Failed to get attendees from room: ${error.message}`
         );
-        // 변환 실패 시 기존 attendees 유지
+        // 실패 시 기존 attendees 유지
       }
     }
 
     const updated: ReportDetails = {
       ...current,
       summary,
-      attendees: attendeesNicknames,
+      attendees,
     };
 
     // S3 JSON 업데이트
@@ -369,7 +360,7 @@ export class ReportsService {
     // PostgreSQL room_report 테이블도 업데이트
     await this.reportsRepository.update(
       { reportId },
-      { attendees: attendeesNicknames }
+      { attendees }
     );
 
     return updated;
