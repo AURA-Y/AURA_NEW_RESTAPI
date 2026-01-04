@@ -42,7 +42,8 @@ export class RoomController {
 
   @Post(":roomId/join")
   async joinRoom(@Param("roomId") roomId: string, @Request() req) {
-    return this.roomService.addAttendee(roomId, req.user.id);
+    // userId 대신 nickname을 저장
+    return this.roomService.addAttendee(roomId, req.user.username);
   }
 
   @Get(":roomId/role")
