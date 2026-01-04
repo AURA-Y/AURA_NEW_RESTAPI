@@ -7,6 +7,7 @@ import {
 import { InjectRepository } from "@nestjs/typeorm";
 import { Repository, In } from "typeorm";
 import { RoomReport } from "../room/entities/room-report.entity";
+import { Room } from "../room/entities/room.entity";
 import { User } from "../auth/entities/user.entity";
 import {
   S3Client,
@@ -53,13 +54,16 @@ export class ReportsService {
     private reportsRepository: Repository<RoomReport>,
     @InjectRepository(User)
     private userRepository: Repository<User>,
+    @InjectRepository(Room)
+    private roomRepository: Repository<Room>,
     private configService: ConfigService
   ) {
     this.bucketName =
       this.configService.get<string>("AURA_S3_BUCKET") ||
       this.configService.get<string>("AWS_BUCKET") ||
       "aura-raw-data-bucket";
-    this.uploadPrefix = this.configService.get<string>("AURA_S3_PREFIX") || "meetings/";
+    this.uploadPrefix =
+      this.configService.get<string>("AURA_S3_PREFIX") || "meetings/";
 
     this.s3Client = new S3Client({
       region: this.configService.get<string>("AWS_REGION", "ap-northeast-2"),
@@ -101,7 +105,10 @@ export class ReportsService {
   ): Promise<FileInfo[]> {
     if (!files || files.length === 0) return [];
 
-    const region = this.configService.get<string>("AWS_REGION", "ap-northeast-2");
+    const region = this.configService.get<string>(
+      "AWS_REGION",
+      "ap-northeast-2"
+    );
     const results: FileInfo[] = [];
 
     for (const file of files) {
@@ -163,7 +170,10 @@ export class ReportsService {
       throw new Error("Failed to create multipart upload");
     }
 
-    const region = this.configService.get<string>("AWS_REGION", "ap-northeast-2");
+    const region = this.configService.get<string>(
+      "AWS_REGION",
+      "ap-northeast-2"
+    );
     const fileUrl = `https://${this.bucketName}.s3.${region}.amazonaws.com/${key}`;
 
     return { uploadId, key, fileId, fileUrl, folderId: baseFolder };
@@ -210,7 +220,10 @@ export class ReportsService {
 
     await this.s3Client.send(command);
 
-    const region = this.configService.get<string>("AWS_REGION", "ap-northeast-2");
+    const region = this.configService.get<string>(
+      "AWS_REGION",
+      "ap-northeast-2"
+    );
     const fileUrl = `https://${this.bucketName}.s3.${region}.amazonaws.com/${params.key}`;
 
     return { fileUrl };
@@ -309,6 +322,59 @@ export class ReportsService {
     return updated;
   }
 
+  async updateReportSummary(
+    reportId: string,
+    summary: string,
+    roomId?: string
+  ): Promise<ReportDetails> {
+    const current = await this.getReportDetailsFromS3(reportId);
+
+    // roomId가 제공되면 attendees를 userId에서 nickname으로 변환
+    let attendeesNicknames: string[] = current.attendees || [];
+
+    if (roomId) {
+      try {
+        // room.attendees에서 userId 배열 가져오기
+        const room = await this.roomRepository.findOne({ where: { roomId } });
+
+        if (room && room.attendees && room.attendees.length > 0) {
+          // userIds를 nicknames로 변환
+          const users = await this.userRepository.find({
+            where: { userId: In(room.attendees) },
+          });
+
+          // userId -> nickname 매핑
+          attendeesNicknames = room.attendees.map((userId) => {
+            const user = users.find((u) => u.userId === userId);
+            return user ? user.nickName : userId; // nickname 없으면 userId 사용
+          });
+        }
+      } catch (error) {
+        this.logger.warn(
+          `Failed to convert attendees to nicknames: ${error.message}`
+        );
+        // 변환 실패 시 기존 attendees 유지
+      }
+    }
+
+    const updated: ReportDetails = {
+      ...current,
+      summary,
+      attendees: attendeesNicknames,
+    };
+
+    // S3 JSON 업데이트
+    await this.saveReportDetailsToS3(updated);
+
+    // PostgreSQL room_report 테이블도 업데이트
+    await this.reportsRepository.update(
+      { reportId },
+      { attendees: attendeesNicknames }
+    );
+
+    return updated;
+  }
+
   async attachReportToUser(userId: string, reportId: string) {
     const user = await this.userRepository.findOne({ where: { userId } });
     if (!user) {
@@ -383,7 +449,10 @@ export class ReportsService {
         contentType,
       };
     } catch (error) {
-      this.logger.error(`Failed to download from S3. url=${fileUrl}`, error as Error);
+      this.logger.error(
+        `Failed to download from S3. url=${fileUrl}`,
+        error as Error
+      );
       throw new NotFoundException(`File not found in S3: ${fileUrl}`);
     }
   }
@@ -402,7 +471,9 @@ export class ReportsService {
     try {
       details = await this.getReportDetailsFromS3(reportId);
     } catch (error) {
-      this.logger.warn(`Report details JSON not found for ${reportId}, continue delete`);
+      this.logger.warn(
+        `Report details JSON not found for ${reportId}, continue delete`
+      );
     }
 
     if (details?.uploadFileList) {
@@ -420,7 +491,9 @@ export class ReportsService {
             })
           );
         } catch (err) {
-          this.logger.warn(`Failed to delete attachment ${file.fileUrl}: ${err}`);
+          this.logger.warn(
+            `Failed to delete attachment ${file.fileUrl}: ${err}`
+          );
         }
       }
     }

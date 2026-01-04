@@ -27,6 +27,9 @@ export class Room {
   @Column({ type: 'varchar', length: 500 })
   topic: string;
 
+  @Column({ type: 'varchar', length: 1000, nullable: true })
+  description: string;
+
   @Column({ type: 'jsonb', default: [] })
   upload_File_list: UploadFileItem[];
 
@@ -44,6 +47,9 @@ export class Room {
 
   @Column({ type: 'uuid' })
   master: string;
+
+  @Column({ type: 'uuid', nullable: true })
+  reportId: string;
 
   @ManyToOne(() => User)
   @JoinColumn({ name: 'master' })

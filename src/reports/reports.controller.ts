@@ -2,6 +2,7 @@ import {
   Controller,
   Get,
   Post,
+  Patch,
   Delete,
   Param,
   Query,
@@ -100,6 +101,20 @@ export class ReportsController {
     return this.reportsService.abortMultipartUpload(body);
   }
 
+  // 보고서 요약 업데이트
+  @Patch(":id/summary")
+  @UseGuards(JwtAuthGuard)
+  async updateReportSummary(
+    @Param("id") id: string,
+    @Body() body: { summary: string; roomId?: string }
+  ) {
+    return this.reportsService.updateReportSummary(
+      id,
+      body.summary,
+      body.roomId
+    );
+  }
+
   @Delete(":id")
   @UseGuards(JwtAuthGuard)
   async deleteReport(@Param("id") id: string, @Req() req: Request) {
@@ -140,7 +155,10 @@ export class ReportsController {
   // 회의 종료 등으로 회의록 확정 (목데이터/추후 LLM용)
   @Post(":id/finalize")
   @UseGuards(JwtAuthGuard)
-  async finalizeReport(@Param("id") id: string, @Body() body: Partial<CreateReportDto>) {
+  async finalizeReport(
+    @Param("id") id: string,
+    @Body() body: Partial<CreateReportDto>
+  ) {
     const updated = await this.reportsService.finalizeReport(id, body as any);
     return updated;
   }

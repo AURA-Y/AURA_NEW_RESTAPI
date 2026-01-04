@@ -12,11 +12,13 @@ model room {
   roomId           String    @id @db.VarChar(255)
   createdAt        DateTime? @default(now()) @db.Timestamptz(6)
   topic            String    @db.VarChar(500)
+  description      String?   @db.VarChar(1000)
   attendees        String[]  @default([])
   maxParticipants  Int?      @default(20)
   token            String?
   livekitUrl       String?   @db.VarChar(500)
   master           String    @db.Uuid
+  reportId         String?   @db.Uuid
   upload_File_list Json?     @default("[]")
   user             user      @relation(fields: [master], references: [userId], onDelete: Cascade, onUpdate: NoAction, map: "FK_74e6383b9b46c2e2c4519ae4f5e")
 
