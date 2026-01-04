@@ -69,11 +69,9 @@ export class ReportsService {
       region: this.configService.get<string>("AWS_REGION", "ap-northeast-2"),
       credentials: {
         accessKeyId:
-          this.configService.get<string>("AWS_ACCESS_KEY_ID_S3") ||
-          this.configService.get<string>("AWS_ACCESS_KEY_ID"),
+          this.configService.get<string>("AWS_ACCESS_KEY_ID_S3"),
         secretAccessKey:
-          this.configService.get<string>("AWS_SECRET_ACCESS_KEY_S3") ||
-          this.configService.get<string>("AWS_SECRET_ACCESS_KEY"),
+          this.configService.get<string>("AWS_SECRET_ACCESS_KEY_S3") 
       },
     });
   }
