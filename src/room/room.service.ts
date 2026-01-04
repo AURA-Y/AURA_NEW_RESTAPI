@@ -60,6 +60,7 @@ export class RoomService {
       throw new NotFoundException(`Room not found: ${roomId}`);
     }
 
+    // attendees는 이제 nickname으로 저장되므로 변환 불필요
     return room;
   }
 
@@ -73,11 +74,12 @@ export class RoomService {
     await this.roomRepository.delete({ roomId });
   }
 
-  async addAttendee(roomId: string, userId: string): Promise<Room> {
+  async addAttendee(roomId: string, nickname: string): Promise<Room> {
     const room = await this.getRoomById(roomId);
 
-    if (!room.attendees.includes(userId)) {
-      room.attendees.push(userId);
+    // nickname으로 저장 (중복 체크)
+    if (!room.attendees.includes(nickname)) {
+      room.attendees.push(nickname);
       return this.roomRepository.save(room);
     }
 
