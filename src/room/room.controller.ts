@@ -34,6 +34,11 @@ export class RoomController {
     return this.roomService.getRoomById(roomId);
   }
 
+  @Get("topic/:topic")
+  async getRoomByTopic(@Param("topic") topic: string) {
+    return this.roomService.getRoomByTopic(topic);
+  }
+
   @Delete(":roomId")
   async deleteRoom(@Param("roomId") roomId: string, @Request() req) {
     await this.roomService.deleteRoom(roomId, req.user.id);
@@ -49,5 +54,10 @@ export class RoomController {
   @Get(":roomId/role")
   async checkUserRole(@Param("roomId") roomId: string, @Request() req) {
     return this.roomService.checkUserRole(roomId, req.user.id);
+  }
+  @Post(":roomId/leave")
+  async leaveRoom(@Param("roomId") roomId: string, @Request() req) {
+    await this.roomService.leaveRoom(roomId, req.user.username);
+    return { message: "Left room successfully" };
   }
 }

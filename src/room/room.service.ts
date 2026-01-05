@@ -64,6 +64,19 @@ export class RoomService {
     return room;
   }
 
+  async getRoomByTopic(topic: string): Promise<{ roomId: string }> {
+    const room = await this.roomRepository.findOne({
+      where: { topic },
+      select: ["roomId"],
+    });
+
+    if (!room) {
+      throw new NotFoundException(`Room with topic "${topic}" not found`);
+    }
+
+    return { roomId: room.roomId };
+  }
+
   async deleteRoom(roomId: string, userId: string): Promise<void> {
     const room = await this.getRoomById(roomId);
 
@@ -98,5 +111,18 @@ export class RoomService {
       isMaster,
       role: isMaster ? "master" : "attendee",
     };
+  }
+  async leaveRoom(roomId: string, nickname: string): Promise<void> {
+    const room = await this.getRoomById(roomId);
+
+    // nickname 제거
+    room.attendees = room.attendees.filter((attendee) => attendee !== nickname);
+    await this.roomRepository.save(room);
+
+    // 방에 남은 인원이 없으면 방 삭제
+    if (room.attendees.length === 0) {
+      await this.roomRepository.delete({ roomId });
+      console.log(`Room ${roomId} deleted because it is empty.`);
+    }
   }
 }
