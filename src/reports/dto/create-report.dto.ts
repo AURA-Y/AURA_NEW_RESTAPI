@@ -5,8 +5,8 @@ import {
   IsOptional,
   IsString,
   ValidateNested,
-} from 'class-validator';
-import { Type } from 'class-transformer';
+} from "class-validator";
+import { Type } from "class-transformer";
 
 class ReportFileDto {
   @IsString()
@@ -29,10 +29,6 @@ export class CreateReportDto {
   @IsOptional()
   @IsString()
   reportId?: string;
-
-  @IsOptional()
-  @IsString()
-  folderId?: string;
 
   @IsString()
   topic: string;
