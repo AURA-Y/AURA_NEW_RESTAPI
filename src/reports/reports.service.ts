@@ -173,7 +173,7 @@ export class ReportsService {
     const region = this.configService.get<string>("AWS_REGION", "ap-northeast-2");
     const fileUrl = `https://${this.bucketName}.s3.${region}.amazonaws.com/${key}`;
 
-    return { uploadId, key, fileId, fileUrl, folderId: targetFolder };
+    return { uploadId, key, fileId, fileUrl };
   }
 
   // 파트별 presigned URL 발급
