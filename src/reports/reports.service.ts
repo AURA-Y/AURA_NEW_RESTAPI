@@ -18,6 +18,8 @@ import {
   CompleteMultipartUploadCommand,
   AbortMultipartUploadCommand,
   DeleteObjectCommand,
+  ListObjectsV2Command,
+  DeleteObjectsCommand,
 } from "@aws-sdk/client-s3";
 import { getSignedUrl } from "@aws-sdk/s3-request-presigner";
 import { ConfigService } from "@nestjs/config";
@@ -34,7 +36,6 @@ export interface FileInfo {
 export interface ReportDetails {
   reportId: string;
   createdAt: string;
-  folderId?: string;
   topic: string;
   summary: string;
   attendees: string[];
@@ -63,17 +64,34 @@ export class ReportsService {
       this.configService.get<string>("AWS_BUCKET") ||
       "aura-raw-data-bucket";
     this.uploadPrefix =
-      this.configService.get<string>("AURA_S3_PREFIX") || "meetings/";
+      this.configService.get<string>("AURA_S3_PREFIX") || "rooms/";
 
     this.s3Client = new S3Client({
       region: this.configService.get<string>("AWS_REGION", "ap-northeast-2"),
       credentials: {
-        accessKeyId:
-          this.configService.get<string>("AWS_ACCESS_KEY_ID_S3"),
-        secretAccessKey:
-          this.configService.get<string>("AWS_SECRET_ACCESS_KEY_S3") 
+        accessKeyId: this.configService.get<string>("AWS_ACCESS_KEY_ID_S3"),
+        secretAccessKey: this.configService.get<string>(
+          "AWS_SECRET_ACCESS_KEY_S3"
+        ),
       },
     });
+  }
+
+  /**
+   * S3 경로 생성 헬퍼 메서드들 (roomId 기반)
+   */
+  private getReportJsonKeys(roomId: string): string[] {
+    const newKey = `${this.uploadPrefix}${roomId}/report.json`;
+    const legacyKey = `${this.reportsPrefix}${roomId}.json`;
+    return [newKey, legacyKey];
+  }
+
+  private getReportMarkdownKey(roomId: string): string {
+    return `${this.uploadPrefix}${roomId}/report.md`;
+  }
+
+  private getReportFolderPrefix(roomId: string): string {
+    return `${this.uploadPrefix}${roomId}/`;
   }
 
   async findByIds(reportIds: string[]): Promise<RoomReport[]> {
@@ -99,7 +117,8 @@ export class ReportsService {
       originalname: string;
       mimetype: string;
       size: number;
-    }>
+    }>,
+    reportId?: string
   ): Promise<FileInfo[]> {
     if (!files || files.length === 0) return [];
 
@@ -108,14 +127,13 @@ export class ReportsService {
       "ap-northeast-2"
     );
     const results: FileInfo[] = [];
+    const targetFolder = reportId || randomUUID();
 
     for (const file of files) {
       const fileId = randomUUID();
       const safeName = encodeURIComponent(file.originalname);
-      const now = new Date();
-      const key = `${this.uploadPrefix}${now.getFullYear()}/${String(
-        now.getMonth() + 1
-      ).padStart(2, "0")}/${fileId}-${safeName}`;
+      // rooms/{roomId}/uploads/{fileId}-{filename} 구조
+      const key = `${this.uploadPrefix}${targetFolder}/uploads/${fileId}-${safeName}`;
 
       await this.s3Client.send(
         new PutObjectCommand({
@@ -143,18 +161,13 @@ export class ReportsService {
     fileName: string,
     fileType: string,
     userId: string,
-    folderId?: string,
     reportId?: string
   ) {
     const fileId = randomUUID();
-    const now = new Date();
     const safeName = encodeURIComponent(fileName);
-    const baseFolder =
-      folderId ||
-      `${now.getFullYear()}/${String(now.getMonth() + 1).padStart(2, "0")}/${String(
-        now.getDate()
-      ).padStart(2, "0")}/${userId}/${reportId || randomUUID()}`;
-    const key = `${this.uploadPrefix}${baseFolder}/files/${fileId}-${safeName}`;
+    // reportId를 폴더명으로 사용, 없으면 새로 생성
+    const targetFolder = reportId || randomUUID();
+    const key = `${this.uploadPrefix}${targetFolder}/uploads/${fileId}-${safeName}`;
 
     const command = new CreateMultipartUploadCommand({
       Bucket: this.bucketName,
@@ -174,7 +187,7 @@ export class ReportsService {
     );
     const fileUrl = `https://${this.bucketName}.s3.${region}.amazonaws.com/${key}`;
 
-    return { uploadId, key, fileId, fileUrl, folderId: baseFolder };
+    return { uploadId, key, fileId, fileUrl };
   }
 
   // 파트별 presigned URL 발급
@@ -240,7 +253,6 @@ export class ReportsService {
   // 보고서 생성: DB 메타 + S3 JSON 기록
   async createReport(payload: {
     reportId?: string;
-    folderId?: string;
     userId: string;
     topic: string;
     summary?: string;
@@ -250,15 +262,8 @@ export class ReportsService {
   }): Promise<ReportDetails> {
     const reportId = payload.reportId || randomUUID();
     const createdAt = payload.createdAt || new Date().toISOString();
-    const createdDate = new Date(createdAt);
-    const folderId =
-      payload.folderId ||
-      `${createdDate.getFullYear()}/${String(createdDate.getMonth() + 1).padStart(2, "0")}/${String(
-        createdDate.getDate()
-      ).padStart(2, "0")}/${payload.userId || "unknown"}/${reportId}`;
     const summary =
-      payload.summary ||
-      "회의 요약(목데이터): 회의 종료 시점에 자동 생성됩니다.";
+      payload.summary || "회의 요약: 회의 종료 시점에 자동 생성됩니다.";
 
     const meta = this.reportsRepository.create({
       reportId,
@@ -271,7 +276,6 @@ export class ReportsService {
     const details: ReportDetails = {
       reportId,
       createdAt,
-      folderId,
       topic: payload.topic,
       summary,
       attendees: payload.attendees,
@@ -283,19 +287,41 @@ export class ReportsService {
   }
 
   async saveReportDetailsToS3(details: ReportDetails) {
-    const newKey = `${this.uploadPrefix}${details.folderId || details.reportId}/report.json`;
+    const region = this.configService.get<string>(
+      "AWS_REGION",
+      "ap-northeast-2"
+    );
+    const markdownUrl = `https://${
+      this.bucketName
+    }.s3.${region}.amazonaws.com/${this.getReportMarkdownKey(
+      details.reportId
+    )}`;
+
+    // 1. report.json 저장 (summary에 마크다운 파일 URL 저장, 실제 파일은 생성하지 않음)
+    const jsonPayload = {
+      ...details,
+      summary: markdownUrl, // 마크다운 파일 경로 저장 (파일은 나중에 생성될 수 있음)
+    };
+    const jsonKey = `${this.uploadPrefix}${details.reportId}/report.json`;
+    await this.s3Client.send(
+      new PutObjectCommand({
+        Bucket: this.bucketName,
+        Key: jsonKey,
+        Body: JSON.stringify(jsonPayload, null, 2),
+        ContentType: "application/json",
+      })
+    );
+
+    // 3. 레거시 JSON 저장 (하위 호환성)
     const legacyKey = `${this.reportsPrefix}${details.reportId}.json`;
-    const payload = JSON.stringify(details, null, 2);
-    for (const key of [newKey, legacyKey]) {
-      await this.s3Client.send(
-        new PutObjectCommand({
-          Bucket: this.bucketName,
-          Key: key,
-          Body: payload,
-          ContentType: "application/json",
-        })
-      );
-    }
+    await this.s3Client.send(
+      new PutObjectCommand({
+        Bucket: this.bucketName,
+        Key: legacyKey,
+        Body: JSON.stringify(jsonPayload, null, 2),
+        ContentType: "application/json",
+      })
+    );
   }
 
   async finalizeReport(
@@ -339,9 +365,7 @@ export class ReportsService {
           attendees = room.attendees;
         }
       } catch (error) {
-        this.logger.warn(
-          `Failed to get attendees from room: ${error.message}`
-        );
+        this.logger.warn(`Failed to get attendees from room: ${error.message}`);
         // 실패 시 기존 attendees 유지
       }
     }
@@ -356,10 +380,7 @@ export class ReportsService {
     await this.saveReportDetailsToS3(updated);
 
     // PostgreSQL room_report 테이블도 업데이트
-    await this.reportsRepository.update(
-      { reportId },
-      { attendees }
-    );
+    await this.reportsRepository.update({ reportId }, { attendees });
 
     return updated;
   }
@@ -376,11 +397,8 @@ export class ReportsService {
     return user.roomReportIdxList;
   }
 
-  async getReportDetailsFromS3(reportId: string): Promise<any> {
-    const tryKeys = [
-      `${this.uploadPrefix}${reportId}/report.json`,
-      `${this.reportsPrefix}${reportId}.json`,
-    ];
+  async getReportDetailsFromS3(roomId: string): Promise<any> {
+    const tryKeys = this.getReportJsonKeys(roomId);
 
     for (const key of tryKeys) {
       try {
@@ -392,11 +410,28 @@ export class ReportsService {
         const response = await this.s3Client.send(command);
         const bodyContents = await response.Body.transformToString();
         const parsed = JSON.parse(bodyContents);
-        if (!parsed.folderId && key.startsWith(this.uploadPrefix)) {
-          parsed.folderId = key
-            .replace(this.uploadPrefix, "")
-            .replace(/\/report\.json$/, "");
+
+        // summary가 report.md URL이면 내용 읽어오기 시도
+        if (parsed.summary && parsed.summary.endsWith("report.md")) {
+          try {
+            const mdKey = this.getReportMarkdownKey(roomId);
+            const mdCommand = new GetObjectCommand({
+              Bucket: this.bucketName,
+              Key: mdKey,
+            });
+            const mdResponse = await this.s3Client.send(mdCommand);
+            // summary 필드를 마크다운 내용으로 교체
+            parsed.summary = await mdResponse.Body.transformToString();
+          } catch (mdErr) {
+            this.logger.warn(
+              `Markdown file not found for ${roomId}: ${mdErr.message}`
+            );
+            // 파일이 없으면 안내 메시지
+            parsed.summary =
+              "(회의록 md파일 생성 - 추후 예정) 파일이 없습니다.";
+          }
         }
+
         return parsed;
       } catch (error) {
         this.logger.warn(`Report JSON not found at key=${key}, try next`);
@@ -404,7 +439,7 @@ export class ReportsService {
     }
 
     throw new NotFoundException(
-      `Report details not found in S3 for ID ${reportId}`
+      `Report details not found in S3 for ID ${roomId}`
     );
   }
 
@@ -420,9 +455,13 @@ export class ReportsService {
         pathParts[0] === this.bucketName ? pathParts.slice(1) : pathParts;
 
       const s3Key = normalizedParts.join("/");
-      const fileName = decodeURIComponent(
+      const rawFileName = decodeURIComponent(
         normalizedParts[normalizedParts.length - 1] || "download"
       );
+      // UUID(36자) + 하이픈(1자) 제거
+      const uuidPattern =
+        /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}-/i;
+      const fileName = rawFileName.replace(uuidPattern, "");
 
       const command = new GetObjectCommand({
         Bucket: this.bucketName,
@@ -446,73 +485,103 @@ export class ReportsService {
     }
   }
 
-  async deleteReport(reportId: string, userId: string) {
+  /**
+   * S3에서 특정 prefix(폴더)의 모든 객체를 삭제
+   */
+  private async deleteS3FolderByPrefix(prefix: string): Promise<number> {
+    try {
+      // 1. prefix에 해당하는 모든 객체 조회
+      const listCommand = new ListObjectsV2Command({
+        Bucket: this.bucketName,
+        Prefix: prefix,
+      });
+
+      const listResponse = await this.s3Client.send(listCommand);
+
+      if (!listResponse.Contents || listResponse.Contents.length === 0) {
+        return 0;
+      }
+
+      // 2. 모든 객체를 일괄 삭제 (최대 1000개)
+      const objectsToDelete = listResponse.Contents.map((obj) => ({
+        Key: obj.Key!,
+      }));
+
+      const deleteCommand = new DeleteObjectsCommand({
+        Bucket: this.bucketName,
+        Delete: {
+          Objects: objectsToDelete,
+          Quiet: true,
+        },
+      });
+
+      await this.s3Client.send(deleteCommand);
+      return objectsToDelete.length;
+    } catch (error) {
+      this.logger.error(`Failed to delete S3 folder at ${prefix}: ${error}`);
+      return 0;
+    }
+  }
+
+  /**
+   * S3에서 roomId에 해당하는 모든 폴더 삭제 (레거시 호환)
+   */
+  private async deleteS3Folder(roomId: string): Promise<void> {
+    // 현재 prefix + 레거시 prefix 모두 시도
+    const prefixes = [
+      this.getReportFolderPrefix(roomId), // rooms/roomId/
+      `meetings/${roomId}/`, // 레거시: meetings/roomId/
+    ];
+
+    let totalDeleted = 0;
+    for (const prefix of prefixes) {
+      const deleted = await this.deleteS3FolderByPrefix(prefix);
+      totalDeleted += deleted;
+    }
+
+    if (totalDeleted > 0) {
+      this.logger.log(`Deleted ${totalDeleted} objects for roomId: ${roomId}`);
+    } else {
+      this.logger.warn(`No objects found for roomId: ${roomId}`);
+    }
+  }
+
+  async deleteReport(roomId: string, userId: string) {
     const user = await this.userRepository.findOne({ where: { userId } });
     if (!user) {
       throw new NotFoundException(`User not found: ${userId}`);
     }
-    if (!user.roomReportIdxList?.includes(reportId)) {
+    if (!user.roomReportIdxList?.includes(roomId)) {
       throw new ForbiddenException("Not allowed to delete this report");
     }
 
-    // S3 JSON + 첨부 삭제
-    let details: ReportDetails | null = null;
+    // S3 폴더 전체 삭제 (roomId/ 폴더의 모든 파일 + report.json + report.md)
     try {
-      details = await this.getReportDetailsFromS3(reportId);
+      await this.deleteS3Folder(roomId);
     } catch (error) {
+      this.logger.warn(`Failed to delete S3 folder for ${roomId}: ${error}`);
+    }
+
+    // 레거시 JSON 삭제 (reports/ 경로)
+    try {
+      await this.s3Client.send(
+        new DeleteObjectCommand({
+          Bucket: this.bucketName,
+          Key: `${this.reportsPrefix}${roomId}.json`,
+        })
+      );
+    } catch (err) {
       this.logger.warn(
-        `Report details JSON not found for ${reportId}, continue delete`
+        `Failed to delete legacy report JSON for ${roomId}: ${err}`
       );
     }
 
-    if (details?.uploadFileList) {
-      for (const file of details.uploadFileList) {
-        try {
-          const url = new URL(file.fileUrl);
-          const pathParts = url.pathname.split("/").filter((p) => p);
-          const normalized =
-            pathParts[0] === this.bucketName ? pathParts.slice(1) : pathParts;
-          const key = normalized.join("/");
-          await this.s3Client.send(
-            new DeleteObjectCommand({
-              Bucket: this.bucketName,
-              Key: key,
-            })
-          );
-        } catch (err) {
-          this.logger.warn(
-            `Failed to delete attachment ${file.fileUrl}: ${err}`
-          );
-        }
-      }
-    }
-
-    // JSON 삭제 (신규 + 레거시)
-    const jsonKeys = [
-      details?.folderId
-        ? `${this.uploadPrefix}${details.folderId}/report.json`
-        : `${this.uploadPrefix}${reportId}/report.json`,
-      `${this.reportsPrefix}${reportId}.json`,
-    ];
-    for (const key of jsonKeys) {
-      try {
-        await this.s3Client.send(
-          new DeleteObjectCommand({
-            Bucket: this.bucketName,
-            Key: key,
-          })
-        );
-      } catch (err) {
-        this.logger.warn(`Failed to delete report JSON for ${reportId} at ${key}: ${err}`);
-      }
-    }
-
     // DB 메타 삭제
-    await this.reportsRepository.delete({ reportId });
+    await this.reportsRepository.delete({ reportId: roomId });
 
     // 사용자 목록에서 제거
     user.roomReportIdxList = (user.roomReportIdxList || []).filter(
-      (id) => id !== reportId
+      (id) => id !== roomId
     );
     await this.userRepository.save(user);
 

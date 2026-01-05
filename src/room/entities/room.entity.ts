@@ -5,8 +5,8 @@ import {
   CreateDateColumn,
   ManyToOne,
   JoinColumn,
-} from 'typeorm';
-import { User } from '../../auth/entities/user.entity';
+} from "typeorm";
+import { User } from "../../auth/entities/user.entity";
 
 export interface UploadFileItem {
   fileId: string;
@@ -16,42 +16,42 @@ export interface UploadFileItem {
   fileType: string;
 }
 
-@Entity('room')
+@Entity("room")
 export class Room {
-  @PrimaryColumn({ type: 'varchar', length: 255 })
+  @PrimaryColumn({ type: "varchar", length: 255 })
   roomId: string;
 
-  @CreateDateColumn({ type: 'timestamp with time zone' })
+  @CreateDateColumn({ type: "timestamp with time zone" })
   createdAt: Date;
 
-  @Column({ type: 'varchar', length: 500 })
+  @Column({ type: "varchar", length: 500 })
   topic: string;
 
-  @Column({ type: 'varchar', length: 1000, nullable: true })
+  @Column({ type: "varchar", length: 1000, nullable: true })
   description: string;
 
-  @Column({ type: 'jsonb', default: [] })
+  @Column({ type: "jsonb", default: [] })
   upload_File_list: UploadFileItem[];
 
-  @Column('text', { array: true, default: [] })
+  @Column("text", { array: true, default: [] })
   attendees: string[];
 
-  @Column({ type: 'integer', default: 20 })
+  @Column({ type: "integer", default: 20 })
   maxParticipants: number;
 
-  @Column({ type: 'text', nullable: true })
+  @Column({ type: "text", nullable: true })
   token: string;
 
-  @Column({ type: 'varchar', length: 500, nullable: true })
+  @Column({ type: "varchar", length: 500, nullable: true })
   livekitUrl: string;
 
-  @Column({ type: 'uuid' })
+  @Column({ type: "uuid" })
   master: string;
 
-  @Column({ type: 'uuid', nullable: true })
+  @Column({ type: "varchar", length: 255, nullable: true })
   reportId: string;
 
   @ManyToOne(() => User)
-  @JoinColumn({ name: 'master' })
+  @JoinColumn({ name: "master" })
   masterUser: User;
 }

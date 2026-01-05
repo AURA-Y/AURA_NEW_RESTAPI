@@ -35,8 +35,14 @@ export class ReportsController {
       limits: { fileSize: 10 * 1024 * 1024 },
     })
   )
-  async uploadFiles(@UploadedFiles() files: any[]) {
-    const uploadFileList = await this.reportsService.uploadFilesToS3(files);
+  async uploadFiles(
+    @UploadedFiles() files: any[],
+    @Query("reportId") reportId?: string
+  ) {
+    const uploadFileList = await this.reportsService.uploadFilesToS3(
+      files,
+      reportId
+    );
     return { uploadFileList };
   }
 
@@ -44,7 +50,12 @@ export class ReportsController {
   @Post("multipart/start")
   @UseGuards(JwtAuthGuard)
   async startMultipart(
-    @Body() body: { fileName: string; fileType: string; folderId?: string; reportId?: string },
+    @Body()
+    body: {
+      fileName: string;
+      fileType: string;
+      reportId?: string;
+    },
     @Req() req: Request
   ) {
     const userId = (req as any).user?.id;
@@ -55,7 +66,6 @@ export class ReportsController {
       body.fileName,
       body.fileType || "application/octet-stream",
       userId,
-      body.folderId,
       body.reportId
     );
   }
@@ -152,7 +162,7 @@ export class ReportsController {
     return { roomReportIdxList };
   }
 
-  // 회의 종료 등으로 회의록 확정 (목데이터/추후 LLM용)
+  // 회의 종료 등으로 회의록 확정
   @Post(":id/finalize")
   @UseGuards(JwtAuthGuard)
   async finalizeReport(

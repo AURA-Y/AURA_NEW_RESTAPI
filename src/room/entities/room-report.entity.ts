@@ -1,21 +1,16 @@
-import {
-  Entity,
-  PrimaryGeneratedColumn,
-  Column,
-  CreateDateColumn,
-} from 'typeorm';
+import { Entity, PrimaryColumn, Column, CreateDateColumn } from "typeorm";
 
-@Entity('room_report')
+@Entity("room_report")
 export class RoomReport {
-  @PrimaryGeneratedColumn('uuid')
+  @PrimaryColumn({ type: "varchar", length: 255 })
   reportId: string;
 
-  @CreateDateColumn({ type: 'timestamp with time zone' })
+  @CreateDateColumn({ type: "timestamp with time zone" })
   createdAt: Date;
 
-  @Column({ type: 'varchar', length: 500 })
+  @Column({ type: "varchar", length: 500 })
   topic: string;
 
-  @Column('text', { array: true, default: [] })
+  @Column("text", { array: true, default: [] })
   attendees: string[];
 }
