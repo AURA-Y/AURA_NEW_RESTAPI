@@ -35,8 +35,14 @@ export class ReportsController {
       limits: { fileSize: 10 * 1024 * 1024 },
     })
   )
-  async uploadFiles(@UploadedFiles() files: any[], @Query("reportId") reportId?: string) {
-    const uploadFileList = await this.reportsService.uploadFilesToS3(files, reportId);
+  async uploadFiles(
+    @UploadedFiles() files: any[],
+    @Query("reportId") reportId?: string
+  ) {
+    const uploadFileList = await this.reportsService.uploadFilesToS3(
+      files,
+      reportId
+    );
     return { uploadFileList };
   }
 
@@ -112,7 +118,11 @@ export class ReportsController {
     @Param("id") id: string,
     @Body() body: { summary: string; roomId?: string }
   ) {
-    return this.reportsService.updateReportSummary(id, body.summary, body.roomId);
+    return this.reportsService.updateReportSummary(
+      id,
+      body.summary,
+      body.roomId
+    );
   }
 
   @Delete(":id")
@@ -145,14 +155,20 @@ export class ReportsController {
     if (!targetUserId) {
       throw new Error("userId is required from token");
     }
-    const roomReportIdxList = await this.reportsService.attachReportToUser(targetUserId, id);
+    const roomReportIdxList = await this.reportsService.attachReportToUser(
+      targetUserId,
+      id
+    );
     return { roomReportIdxList };
   }
 
   // 회의 종료 등으로 회의록 확정
   @Post(":id/finalize")
   @UseGuards(JwtAuthGuard)
-  async finalizeReport(@Param("id") id: string, @Body() body: Partial<CreateReportDto>) {
+  async finalizeReport(
+    @Param("id") id: string,
+    @Body() body: Partial<CreateReportDto>
+  ) {
     const updated = await this.reportsService.finalizeReport(id, body as any);
     return updated;
   }
@@ -172,11 +188,14 @@ export class ReportsController {
     @Query("fileUrl") fileUrl: string,
     @Res({ passthrough: true }) res: Response
   ): Promise<StreamableFile> {
-    const { stream, fileName, contentType } = await this.reportsService.downloadFileFromS3(fileUrl);
+    const { stream, fileName, contentType } =
+      await this.reportsService.downloadFileFromS3(fileUrl);
 
     res.set({
       "Content-Type": contentType,
-      "Content-Disposition": `attachment; filename="${encodeURIComponent(fileName)}"`,
+      "Content-Disposition": `attachment; filename="${encodeURIComponent(
+        fileName
+      )}"`,
     });
 
     return new StreamableFile(stream);

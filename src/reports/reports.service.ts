@@ -1,4 +1,9 @@
-import { ForbiddenException, Injectable, Logger, NotFoundException } from "@nestjs/common";
+import {
+  ForbiddenException,
+  Injectable,
+  Logger,
+  NotFoundException,
+} from "@nestjs/common";
 import { InjectRepository } from "@nestjs/typeorm";
 import { Repository, In } from "typeorm";
 import { RoomReport } from "../room/entities/room-report.entity";
@@ -58,13 +63,16 @@ export class ReportsService {
       this.configService.get<string>("AURA_S3_BUCKET") ||
       this.configService.get<string>("AWS_BUCKET") ||
       "aura-raw-data-bucket";
-    this.uploadPrefix = this.configService.get<string>("AURA_S3_PREFIX") || "rooms/";
+    this.uploadPrefix =
+      this.configService.get<string>("AURA_S3_PREFIX") || "rooms/";
 
     this.s3Client = new S3Client({
       region: this.configService.get<string>("AWS_REGION", "ap-northeast-2"),
       credentials: {
         accessKeyId: this.configService.get<string>("AWS_ACCESS_KEY_ID_S3"),
-        secretAccessKey: this.configService.get<string>("AWS_SECRET_ACCESS_KEY_S3"),
+        secretAccessKey: this.configService.get<string>(
+          "AWS_SECRET_ACCESS_KEY_S3"
+        ),
       },
     });
   }
@@ -114,7 +122,10 @@ export class ReportsService {
   ): Promise<FileInfo[]> {
     if (!files || files.length === 0) return [];
 
-    const region = this.configService.get<string>("AWS_REGION", "ap-northeast-2");
+    const region = this.configService.get<string>(
+      "AWS_REGION",
+      "ap-northeast-2"
+    );
     const results: FileInfo[] = [];
     const targetFolder = reportId || randomUUID();
 
@@ -170,7 +181,10 @@ export class ReportsService {
       throw new Error("Failed to create multipart upload");
     }
 
-    const region = this.configService.get<string>("AWS_REGION", "ap-northeast-2");
+    const region = this.configService.get<string>(
+      "AWS_REGION",
+      "ap-northeast-2"
+    );
     const fileUrl = `https://${this.bucketName}.s3.${region}.amazonaws.com/${key}`;
 
     return { uploadId, key, fileId, fileUrl };
@@ -217,7 +231,10 @@ export class ReportsService {
 
     await this.s3Client.send(command);
 
-    const region = this.configService.get<string>("AWS_REGION", "ap-northeast-2");
+    const region = this.configService.get<string>(
+      "AWS_REGION",
+      "ap-northeast-2"
+    );
     const fileUrl = `https://${this.bucketName}.s3.${region}.amazonaws.com/${params.key}`;
 
     return { fileUrl };
@@ -245,7 +262,8 @@ export class ReportsService {
   }): Promise<ReportDetails> {
     const reportId = payload.reportId || randomUUID();
     const createdAt = payload.createdAt || new Date().toISOString();
-    const summary = payload.summary || "회의 요약: 회의 종료 시점에 자동 생성됩니다.";
+    const summary =
+      payload.summary || "회의 요약: 회의 종료 시점에 자동 생성됩니다.";
 
     const meta = this.reportsRepository.create({
       reportId,
@@ -269,10 +287,15 @@ export class ReportsService {
   }
 
   async saveReportDetailsToS3(details: ReportDetails) {
-    const region = this.configService.get<string>("AWS_REGION", "ap-northeast-2");
+    const region = this.configService.get<string>(
+      "AWS_REGION",
+      "ap-northeast-2"
+    );
     const markdownUrl = `https://${
       this.bucketName
-    }.s3.${region}.amazonaws.com/${this.getReportMarkdownKey(details.reportId)}`;
+    }.s3.${region}.amazonaws.com/${this.getReportMarkdownKey(
+      details.reportId
+    )}`;
 
     // 1. report.json 저장 (summary에 마크다운 파일 URL 저장, 실제 파일은 생성하지 않음)
     const jsonPayload = {
@@ -301,7 +324,10 @@ export class ReportsService {
     );
   }
 
-  async finalizeReport(reportId: string, data: Partial<ReportDetails>): Promise<ReportDetails> {
+  async finalizeReport(
+    reportId: string,
+    data: Partial<ReportDetails>
+  ): Promise<ReportDetails> {
     const current = await this.getReportDetailsFromS3(reportId);
     const updated: ReportDetails = {
       ...current,
@@ -397,9 +423,12 @@ export class ReportsService {
             // summary 필드를 마크다운 내용으로 교체
             parsed.summary = await mdResponse.Body.transformToString();
           } catch (mdErr) {
-            this.logger.warn(`Markdown file not found for ${roomId}: ${mdErr.message}`);
+            this.logger.warn(
+              `Markdown file not found for ${roomId}: ${mdErr.message}`
+            );
             // 파일이 없으면 안내 메시지
-            parsed.summary = "(회의록 md파일 생성 - 추후 예정) 파일이 없습니다.";
+            parsed.summary =
+              "(회의록 md파일 생성 - 추후 예정) 파일이 없습니다.";
           }
         }
 
@@ -409,7 +438,9 @@ export class ReportsService {
       }
     }
 
-    throw new NotFoundException(`Report details not found in S3 for ID ${roomId}`);
+    throw new NotFoundException(
+      `Report details not found in S3 for ID ${roomId}`
+    );
   }
 
   async downloadFileFromS3(fileUrl: string): Promise<{
@@ -420,14 +451,16 @@ export class ReportsService {
     try {
       const url = new URL(fileUrl);
       const pathParts = url.pathname.split("/").filter((p) => p);
-      const normalizedParts = pathParts[0] === this.bucketName ? pathParts.slice(1) : pathParts;
+      const normalizedParts =
+        pathParts[0] === this.bucketName ? pathParts.slice(1) : pathParts;
 
       const s3Key = normalizedParts.join("/");
       const rawFileName = decodeURIComponent(
         normalizedParts[normalizedParts.length - 1] || "download"
       );
       // UUID(36자) + 하이픈(1자) 제거
-      const uuidPattern = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}-/i;
+      const uuidPattern =
+        /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}-/i;
       const fileName = rawFileName.replace(uuidPattern, "");
 
       const command = new GetObjectCommand({
@@ -444,7 +477,10 @@ export class ReportsService {
         contentType,
       };
     } catch (error) {
-      this.logger.error(`Failed to download from S3. url=${fileUrl}`, error as Error);
+      this.logger.error(
+        `Failed to download from S3. url=${fileUrl}`,
+        error as Error
+      );
       throw new NotFoundException(`File not found in S3: ${fileUrl}`);
     }
   }
@@ -535,14 +571,18 @@ export class ReportsService {
         })
       );
     } catch (err) {
-      this.logger.warn(`Failed to delete legacy report JSON for ${roomId}: ${err}`);
+      this.logger.warn(
+        `Failed to delete legacy report JSON for ${roomId}: ${err}`
+      );
     }
 
     // DB 메타 삭제
     await this.reportsRepository.delete({ reportId: roomId });
 
     // 사용자 목록에서 제거
-    user.roomReportIdxList = (user.roomReportIdxList || []).filter((id) => id !== roomId);
+    user.roomReportIdxList = (user.roomReportIdxList || []).filter(
+      (id) => id !== roomId
+    );
     await this.userRepository.save(user);
 
     return { deleted: true };
