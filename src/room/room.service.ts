@@ -87,6 +87,14 @@ export class RoomService {
     await this.roomRepository.delete({ roomId });
   }
 
+  async forceDeleteRoom(roomId: string): Promise<void> {
+    const room = await this.roomRepository.findOne({ where: { roomId } });
+    if (room) {
+      await this.roomRepository.delete({ roomId });
+      console.log(`[System] Room ${roomId} force deleted.`);
+    }
+  }
+
   async addAttendee(roomId: string, nickname: string): Promise<Room> {
     const room = await this.getRoomById(roomId);
 
