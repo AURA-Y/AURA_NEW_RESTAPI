@@ -47,7 +47,6 @@ export class ReportsService {
   private s3Client: S3Client;
   private readonly bucketName: string;
   private readonly uploadPrefix: string;
-  private readonly reportsPrefix = "reports/";
   private readonly logger = new Logger(ReportsService.name);
 
   constructor(
@@ -82,8 +81,7 @@ export class ReportsService {
    */
   private getReportJsonKeys(roomId: string): string[] {
     const newKey = `${this.uploadPrefix}${roomId}/report.json`;
-    const legacyKey = `${this.reportsPrefix}${roomId}.json`;
-    return [newKey, legacyKey];
+    return [newKey];
   }
 
   private getReportMarkdownKey(roomId: string): string {
@@ -103,6 +101,18 @@ export class ReportsService {
       where: { reportId: In(reportIds) },
       order: { createdAt: "DESC" },
     });
+  }
+
+  async findAllByUserId(userId: string): Promise<RoomReport[]> {
+    const user = await this.userRepository.findOne({ where: { userId } });
+    if (
+      !user ||
+      !user.roomReportIdxList ||
+      user.roomReportIdxList.length === 0
+    ) {
+      return [];
+    }
+    return this.findByIds(user.roomReportIdxList);
   }
 
   async create(reportData: Partial<RoomReport>): Promise<RoomReport> {
@@ -311,17 +321,6 @@ export class ReportsService {
         ContentType: "application/json",
       })
     );
-
-    // 3. 레거시 JSON 저장 (하위 호환성)
-    const legacyKey = `${this.reportsPrefix}${details.reportId}.json`;
-    await this.s3Client.send(
-      new PutObjectCommand({
-        Bucket: this.bucketName,
-        Key: legacyKey,
-        Body: JSON.stringify(jsonPayload, null, 2),
-        ContentType: "application/json",
-      })
-    );
   }
 
   async finalizeReport(
@@ -524,23 +523,14 @@ export class ReportsService {
   }
 
   /**
-   * S3에서 roomId에 해당하는 모든 폴더 삭제 (레거시 호환)
+   * S3에서 roomId에 해당하는 모든 폴더 삭제
    */
   private async deleteS3Folder(roomId: string): Promise<void> {
-    // 현재 prefix + 레거시 prefix 모두 시도
-    const prefixes = [
-      this.getReportFolderPrefix(roomId), // rooms/roomId/
-      `meetings/${roomId}/`, // 레거시: meetings/roomId/
-    ];
+    const prefix = this.getReportFolderPrefix(roomId); // rooms/roomId/
+    const deleted = await this.deleteS3FolderByPrefix(prefix);
 
-    let totalDeleted = 0;
-    for (const prefix of prefixes) {
-      const deleted = await this.deleteS3FolderByPrefix(prefix);
-      totalDeleted += deleted;
-    }
-
-    if (totalDeleted > 0) {
-      this.logger.log(`Deleted ${totalDeleted} objects for roomId: ${roomId}`);
+    if (deleted > 0) {
+      this.logger.log(`Deleted ${deleted} objects for roomId: ${roomId}`);
     } else {
       this.logger.warn(`No objects found for roomId: ${roomId}`);
     }
@@ -560,20 +550,6 @@ export class ReportsService {
       await this.deleteS3Folder(roomId);
     } catch (error) {
       this.logger.warn(`Failed to delete S3 folder for ${roomId}: ${error}`);
-    }
-
-    // 레거시 JSON 삭제 (reports/ 경로)
-    try {
-      await this.s3Client.send(
-        new DeleteObjectCommand({
-          Bucket: this.bucketName,
-          Key: `${this.reportsPrefix}${roomId}.json`,
-        })
-      );
-    } catch (err) {
-      this.logger.warn(
-        `Failed to delete legacy report JSON for ${roomId}: ${err}`
-      );
     }
 
     // DB 메타 삭제

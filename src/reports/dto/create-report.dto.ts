@@ -23,6 +23,10 @@ class ReportFileDto {
 
   @IsString()
   fileType: string;
+
+  @IsOptional()
+  @IsString()
+  key?: string;
 }
 
 export class CreateReportDto {
