@@ -173,6 +173,16 @@ export class ReportsController {
     return updated;
   }
 
+  @Get("user-reports")
+  @UseGuards(JwtAuthGuard)
+  async getUserReports(@Req() req: Request) {
+    const userId = (req as any).user?.id;
+    if (!userId) {
+      throw new Error("userId is required from token");
+    }
+    return this.reportsService.findAllByUserId(userId);
+  }
+
   // 여러 리포트 조회 (쿼리 파라미터로 ids 전달) - 구체적인 라우트 먼저
   @Get("list")
   @UseGuards(JwtAuthGuard)
