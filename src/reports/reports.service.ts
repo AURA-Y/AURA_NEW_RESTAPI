@@ -92,6 +92,20 @@ export class ReportsService {
     return `${this.uploadPrefix}${roomId}/`;
   }
 
+  private async getAccessibleReportIds(
+    userId: string,
+    nickName: string
+  ): Promise<string[]> {
+    const rooms = await this.roomRepository
+      .createQueryBuilder("room")
+      .select("room.roomId", "roomId")
+      .where("room.master = :userId", { userId })
+      .orWhere(":nickName = ANY(room.attendees)", { nickName })
+      .getRawMany();
+
+    return rooms.map((room) => room.roomId);
+  }
+
   async findByIds(reportIds: string[]): Promise<RoomReport[]> {
     if (!reportIds || reportIds.length === 0) {
       return [];
@@ -104,15 +118,23 @@ export class ReportsService {
   }
 
   async findAllByUserId(userId: string): Promise<RoomReport[]> {
-    const user = await this.userRepository.findOne({ where: { userId } });
-    if (
-      !user ||
-      !user.roomReportIdxList ||
-      user.roomReportIdxList.length === 0
-    ) {
+    const user = await this.userRepository.findOne({
+      where: { userId },
+      select: { userId: true, nickName: true },
+    });
+    if (!user) {
       return [];
     }
-    return this.findByIds(user.roomReportIdxList);
+
+    const reportIds = await this.getAccessibleReportIds(
+      user.userId,
+      user.nickName
+    );
+    if (reportIds.length === 0) {
+      return [];
+    }
+
+    return this.findByIds(reportIds);
   }
 
   async create(reportData: Partial<RoomReport>): Promise<RoomReport> {
@@ -385,15 +407,31 @@ export class ReportsService {
   }
 
   async attachReportToUser(userId: string, reportId: string) {
-    const user = await this.userRepository.findOne({ where: { userId } });
+    const user = await this.userRepository.findOne({
+      where: { userId },
+      select: { userId: true, nickName: true },
+    });
     if (!user) {
       throw new NotFoundException(`User not found: ${userId}`);
     }
-    const current = new Set(user.roomReportIdxList || []);
-    current.add(reportId);
-    user.roomReportIdxList = Array.from(current);
-    await this.userRepository.save(user);
-    return user.roomReportIdxList;
+
+    const report = await this.reportsRepository.findOne({
+      where: { reportId },
+      select: { reportId: true },
+    });
+    if (!report) {
+      throw new NotFoundException(`Report not found: ${reportId}`);
+    }
+
+    const reportIds = await this.getAccessibleReportIds(
+      user.userId,
+      user.nickName
+    );
+    if (!reportIds.includes(reportId)) {
+      throw new ForbiddenException("Not allowed to access this report");
+    }
+
+    return reportIds;
   }
 
   async getReportDetailsFromS3(roomId: string): Promise<any> {
@@ -537,29 +575,31 @@ export class ReportsService {
   }
 
   async deleteReport(roomId: string, userId: string) {
-    const user = await this.userRepository.findOne({ where: { userId } });
+    const user = await this.userRepository.findOne({
+      where: { userId },
+      select: { userId: true, nickName: true },
+    });
     if (!user) {
       throw new NotFoundException(`User not found: ${userId}`);
     }
-    if (!user.roomReportIdxList?.includes(roomId)) {
+
+    const reportIds = await this.getAccessibleReportIds(
+      user.userId,
+      user.nickName
+    );
+    if (!reportIds.includes(roomId)) {
       throw new ForbiddenException("Not allowed to delete this report");
     }
 
-    // S3 폴더 전체 삭제 (roomId/ 폴더의 모든 파일 + report.json + report.md)
+    // S3 ??? ??? ??? (roomId/ ???????? ??? + report.json + report.md)
     try {
       await this.deleteS3Folder(roomId);
     } catch (error) {
       this.logger.warn(`Failed to delete S3 folder for ${roomId}: ${error}`);
     }
 
-    // DB 메타 삭제
+    // DB ??? ???
     await this.reportsRepository.delete({ reportId: roomId });
-
-    // 사용자 목록에서 제거
-    user.roomReportIdxList = (user.roomReportIdxList || []).filter(
-      (id) => id !== roomId
-    );
-    await this.userRepository.save(user);
 
     return { deleted: true };
   }
