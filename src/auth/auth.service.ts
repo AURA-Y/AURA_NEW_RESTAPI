@@ -27,7 +27,7 @@ export class AuthService {
    * 회원가입
    */
   async register(registerDto: RegisterDto): Promise<AuthResponseDto> {
-    const { email, password, nickname } = registerDto;
+    const { email, password, nickName } = registerDto;
 
     // 이메일 중복 확인
     const existingEmail = await this.userRepository.findOne({
@@ -40,7 +40,7 @@ export class AuthService {
 
     // 닉네임 중복 확인
     const existingNickname = await this.userRepository.findOne({
-      where: { nickName: nickname },
+      where: { nickName },
     });
 
     if (existingNickname) {
@@ -53,13 +53,13 @@ export class AuthService {
     // 사용자 생성
     const user = this.userRepository.create({
       email,
-      nickName: nickname,
+      nickName,
       userPassword: hashedPassword,
     });
 
     await this.userRepository.save(user);
 
-    this.logger.log(`New user registered: ${nickname} (${email})`);
+    this.logger.log(`New user registered: ${nickName} (${email})`);
 
     // JWT 토큰 생성
     const accessToken = this.generateToken(user);
@@ -68,7 +68,6 @@ export class AuthService {
       id: user.userId,
       email: user.email,
       nickName: user.nickName,
-      roomReportIdxList: user.roomReportIdxList || [],
     });
   }
 
@@ -81,6 +80,12 @@ export class AuthService {
     // 사용자 조회 (이메일로 찾기)
     const user = await this.userRepository.findOne({
       where: { email },
+      select: {
+        userId: true,
+        email: true,
+        nickName: true,
+        userPassword: true,
+      },
     });
 
     if (!user) {
@@ -103,7 +108,6 @@ export class AuthService {
       id: user.userId,
       email: user.email,
       nickName: user.nickName,
-      roomReportIdxList: user.roomReportIdxList || [],
     });
   }
 

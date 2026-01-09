@@ -5,7 +5,6 @@ export class AuthResponseDto {
     id: string;
     email: string;
     nickName: string;
-    roomReportIdxList?: string[];
   };
 
   constructor(
@@ -14,7 +13,6 @@ export class AuthResponseDto {
       id: string;
       email: string;
       nickName: string;
-      roomReportIdxList?: string[];
     },
   ) {
     this.accessToken = accessToken;

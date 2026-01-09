@@ -15,5 +15,5 @@ export class RegisterDto {
   @IsNotEmpty()
   @MinLength(2)
   @MaxLength(50)
-  nickname: string;
+  nickName: string;
 }
