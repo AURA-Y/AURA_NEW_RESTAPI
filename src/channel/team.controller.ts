@@ -14,7 +14,7 @@ export class TeamController {
    */
   @Post()
   async createTeam(@Body() createTeamDto: CreateTeamDto, @Request() req) {
-    return this.teamService.createTeam(createTeamDto, req.user.userId);
+    return this.teamService.createTeam(createTeamDto, req.user.id);
   }
 
   /**
@@ -22,7 +22,7 @@ export class TeamController {
    */
   @Get('channel/:channelId')
   async getTeamsByChannel(@Param('channelId') channelId: string, @Request() req) {
-    return this.teamService.getTeamsByChannel(channelId, req.user.userId);
+    return this.teamService.getTeamsByChannel(channelId, req.user.id);
   }
 
   /**
@@ -30,7 +30,7 @@ export class TeamController {
    */
   @Get(':teamId')
   async getTeamById(@Param('teamId') teamId: string, @Request() req) {
-    return this.teamService.getTeamById(teamId, req.user.userId);
+    return this.teamService.getTeamById(teamId, req.user.id);
   }
 
   /**
@@ -42,7 +42,7 @@ export class TeamController {
     @Body() updateTeamDto: UpdateTeamDto,
     @Request() req
   ) {
-    return this.teamService.updateTeam(teamId, updateTeamDto, req.user.userId);
+    return this.teamService.updateTeam(teamId, updateTeamDto, req.user.id);
   }
 
   /**
@@ -50,7 +50,7 @@ export class TeamController {
    */
   @Delete(':teamId')
   async deleteTeam(@Param('teamId') teamId: string, @Request() req) {
-    return this.teamService.deleteTeam(teamId, req.user.userId);
+    return this.teamService.deleteTeam(teamId, req.user.id);
   }
 
   /**
@@ -62,7 +62,7 @@ export class TeamController {
     @Body('userId') targetUserId: string,
     @Request() req
   ) {
-    return this.teamService.assignMemberToTeam(teamId, targetUserId, req.user.userId);
+    return this.teamService.assignMemberToTeam(teamId, targetUserId, req.user.id);
   }
 
   /**
@@ -74,6 +74,6 @@ export class TeamController {
     @Param('userId') targetUserId: string,
     @Request() req
   ) {
-    return this.teamService.removeMemberFromTeam(teamId, targetUserId, req.user.userId);
+    return this.teamService.removeMemberFromTeam(teamId, targetUserId, req.user.id);
   }
 }

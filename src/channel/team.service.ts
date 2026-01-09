@@ -1,15 +1,22 @@
 import { Injectable, NotFoundException, ForbiddenException } from '@nestjs/common';
-import { PrismaClient, ChannelRole } from '../../generated/prisma';
+import { InjectRepository } from '@nestjs/typeorm';
+import { Repository } from 'typeorm';
+import { Team } from './entities/team.entity';
+import { Channel } from './entities/channel.entity';
+import { ChannelMember, ChannelRole } from './entities/channel-member.entity';
 import { CreateTeamDto } from './dto/create-team.dto';
 import { UpdateTeamDto } from './dto/update-team.dto';
 
 @Injectable()
 export class TeamService {
-  private prisma: PrismaClient;
-
-  constructor() {
-    this.prisma = new PrismaClient();
-  }
+  constructor(
+    @InjectRepository(Team)
+    private teamRepository: Repository<Team>,
+    @InjectRepository(Channel)
+    private channelRepository: Repository<Channel>,
+    @InjectRepository(ChannelMember)
+    private channelMemberRepository: Repository<ChannelMember>,
+  ) {}
 
   /**
    * 팀 생성 (채널 소유자 또는 관리자만 가능)
@@ -18,7 +25,7 @@ export class TeamService {
     const { teamName, channelId } = createTeamDto;
 
     // 채널 존재 확인
-    const channel = await this.prisma.channel.findUnique({
+    const channel = await this.channelRepository.findOne({
       where: { channelId },
     });
 
@@ -27,12 +34,10 @@ export class TeamService {
     }
 
     // 요청자가 채널의 OWNER 또는 ADMIN인지 확인
-    const member = await this.prisma.channelMember.findUnique({
+    const member = await this.channelMemberRepository.findOne({
       where: {
-        channelId_userId: {
-          channelId,
-          userId,
-        }
+        channelId,
+        userId,
       }
     });
 
@@ -41,27 +46,18 @@ export class TeamService {
     }
 
     // 팀 생성
-    const team = await this.prisma.team.create({
-      data: {
-        teamName,
-        channelId,
-      },
-      include: {
-        channel: {
-          select: {
-            channelId: true,
-            channelName: true,
-          }
-        },
-        _count: {
-          select: {
-            members: true,
-          }
-        }
-      }
+    const team = this.teamRepository.create({
+      teamName,
+      channelId,
     });
 
-    return team;
+    await this.teamRepository.save(team);
+
+    // 생성된 팀 정보 반환
+    return this.teamRepository.findOne({
+      where: { teamId: team.teamId },
+      relations: ['channel', 'members', 'members.user'],
+    });
   }
 
   /**
@@ -69,12 +65,10 @@ export class TeamService {
    */
   async getTeamsByChannel(channelId: string, userId: string) {
     // 채널 멤버인지 확인
-    const member = await this.prisma.channelMember.findUnique({
+    const member = await this.channelMemberRepository.findOne({
       where: {
-        channelId_userId: {
-          channelId,
-          userId,
-        }
+        channelId,
+        userId,
       }
     });
 
@@ -82,28 +76,10 @@ export class TeamService {
       throw new ForbiddenException('You are not a member of this channel');
     }
 
-    const teams = await this.prisma.team.findMany({
+    const teams = await this.teamRepository.find({
       where: { channelId },
-      include: {
-        members: {
-          include: {
-            user: {
-              select: {
-                userId: true,
-                email: true,
-                nickName: true,
-              }
-            }
-          }
-        },
-        _count: {
-          select: {
-            members: true,
-            rooms: true,
-          }
-        }
-      },
-      orderBy: { createdAt: 'asc' },
+      relations: ['members', 'members.user'],
+      order: { createdAt: 'ASC' },
     });
 
     return teams;
@@ -113,29 +89,9 @@ export class TeamService {
    * 특정 팀 상세 조회
    */
   async getTeamById(teamId: string, userId: string) {
-    const team = await this.prisma.team.findUnique({
+    const team = await this.teamRepository.findOne({
       where: { teamId },
-      include: {
-        channel: true,
-        members: {
-          include: {
-            user: {
-              select: {
-                userId: true,
-                email: true,
-                nickName: true,
-              }
-            }
-          }
-        },
-        _count: {
-          select: {
-            members: true,
-            rooms: true,
-            reports: true,
-          }
-        }
-      }
+      relations: ['channel', 'members', 'members.user'],
     });
 
     if (!team) {
@@ -143,12 +99,10 @@ export class TeamService {
     }
 
     // 해당 채널의 멤버인지 확인
-    const channelMember = await this.prisma.channelMember.findUnique({
+    const channelMember = await this.channelMemberRepository.findOne({
       where: {
-        channelId_userId: {
-          channelId: team.channelId,
-          userId,
-        }
+        channelId: team.channelId,
+        userId,
       }
     });
 
@@ -164,9 +118,9 @@ export class TeamService {
    */
   async updateTeam(teamId: string, updateTeamDto: UpdateTeamDto, userId: string) {
     // 팀 존재 확인
-    const team = await this.prisma.team.findUnique({
+    const team = await this.teamRepository.findOne({
       where: { teamId },
-      include: { channel: true }
+      relations: ['channel']
     });
 
     if (!team) {
@@ -174,12 +128,10 @@ export class TeamService {
     }
 
     // 요청자가 채널의 OWNER 또는 ADMIN인지 확인
-    const member = await this.prisma.channelMember.findUnique({
+    const member = await this.channelMemberRepository.findOne({
       where: {
-        channelId_userId: {
-          channelId: team.channelId,
-          userId,
-        }
+        channelId: team.channelId,
+        userId,
       }
     });
 
@@ -188,25 +140,14 @@ export class TeamService {
     }
 
     // 팀 업데이트
-    const updatedTeam = await this.prisma.team.update({
-      where: { teamId },
-      data: updateTeamDto,
-      include: {
-        channel: {
-          select: {
-            channelId: true,
-            channelName: true,
-          }
-        },
-        _count: {
-          select: {
-            members: true,
-          }
-        }
-      }
-    });
+    Object.assign(team, updateTeamDto);
+    await this.teamRepository.save(team);
 
-    return updatedTeam;
+    // 업데이트된 팀 정보 반환
+    return this.teamRepository.findOne({
+      where: { teamId },
+      relations: ['channel', 'members', 'members.user'],
+    });
   }
 
   /**
@@ -214,7 +155,7 @@ export class TeamService {
    */
   async deleteTeam(teamId: string, userId: string) {
     // 팀 존재 확인
-    const team = await this.prisma.team.findUnique({
+    const team = await this.teamRepository.findOne({
       where: { teamId },
     });
 
@@ -223,12 +164,10 @@ export class TeamService {
     }
 
     // 요청자가 채널의 OWNER 또는 ADMIN인지 확인
-    const member = await this.prisma.channelMember.findUnique({
+    const member = await this.channelMemberRepository.findOne({
       where: {
-        channelId_userId: {
-          channelId: team.channelId,
-          userId,
-        }
+        channelId: team.channelId,
+        userId,
       }
     });
 
@@ -237,9 +176,7 @@ export class TeamService {
     }
 
     // 팀 삭제
-    await this.prisma.team.delete({
-      where: { teamId },
-    });
+    await this.teamRepository.delete({ teamId });
 
     return { message: 'Team deleted successfully' };
   }
@@ -249,7 +186,7 @@ export class TeamService {
    */
   async assignMemberToTeam(teamId: string, targetUserId: string, requestUserId: string) {
     // 팀 존재 확인
-    const team = await this.prisma.team.findUnique({
+    const team = await this.teamRepository.findOne({
       where: { teamId },
     });
 
@@ -258,12 +195,10 @@ export class TeamService {
     }
 
     // 요청자가 채널의 OWNER 또는 ADMIN인지 확인
-    const requesterMember = await this.prisma.channelMember.findUnique({
+    const requesterMember = await this.channelMemberRepository.findOne({
       where: {
-        channelId_userId: {
-          channelId: team.channelId,
-          userId: requestUserId,
-        }
+        channelId: team.channelId,
+        userId: requestUserId,
       }
     });
 
@@ -272,12 +207,10 @@ export class TeamService {
     }
 
     // 대상 사용자가 채널 멤버인지 확인
-    const targetMember = await this.prisma.channelMember.findUnique({
+    const targetMember = await this.channelMemberRepository.findOne({
       where: {
-        channelId_userId: {
-          channelId: team.channelId,
-          userId: targetUserId,
-        }
+        channelId: team.channelId,
+        userId: targetUserId,
       }
     });
 
@@ -286,29 +219,17 @@ export class TeamService {
     }
 
     // 팀에 멤버 할당 (teamId 업데이트)
-    const updatedMember = await this.prisma.channelMember.update({
-      where: {
-        channelId_userId: {
-          channelId: team.channelId,
-          userId: targetUserId,
-        }
-      },
-      data: {
-        teamId: teamId,
-      },
-      include: {
-        user: {
-          select: {
-            userId: true,
-            email: true,
-            nickName: true,
-          }
-        },
-        team: true,
-      }
-    });
+    targetMember.teamId = teamId;
+    await this.channelMemberRepository.save(targetMember);
 
-    return updatedMember;
+    // 업데이트된 멤버 정보 반환
+    return this.channelMemberRepository.findOne({
+      where: {
+        channelId: team.channelId,
+        userId: targetUserId,
+      },
+      relations: ['user', 'team'],
+    });
   }
 
   /**
@@ -316,7 +237,7 @@ export class TeamService {
    */
   async removeMemberFromTeam(teamId: string, targetUserId: string, requestUserId: string) {
     // 팀 존재 확인
-    const team = await this.prisma.team.findUnique({
+    const team = await this.teamRepository.findOne({
       where: { teamId },
     });
 
@@ -325,12 +246,10 @@ export class TeamService {
     }
 
     // 요청자가 채널의 OWNER 또는 ADMIN인지 확인
-    const requesterMember = await this.prisma.channelMember.findUnique({
+    const requesterMember = await this.channelMemberRepository.findOne({
       where: {
-        channelId_userId: {
-          channelId: team.channelId,
-          userId: requestUserId,
-        }
+        channelId: team.channelId,
+        userId: requestUserId,
       }
     });
 
@@ -339,27 +258,25 @@ export class TeamService {
     }
 
     // 팀에서 멤버 제거 (teamId를 null로 설정)
-    const updatedMember = await this.prisma.channelMember.update({
+    const targetMember = await this.channelMemberRepository.findOne({
       where: {
-        channelId_userId: {
-          channelId: team.channelId,
-          userId: targetUserId,
-        }
-      },
-      data: {
-        teamId: null,
-      },
-      include: {
-        user: {
-          select: {
-            userId: true,
-            email: true,
-            nickName: true,
-          }
-        }
+        channelId: team.channelId,
+        userId: targetUserId,
       }
     });
 
-    return updatedMember;
+    if (targetMember) {
+      targetMember.teamId = null;
+      await this.channelMemberRepository.save(targetMember);
+    }
+
+    // 업데이트된 멤버 정보 반환
+    return this.channelMemberRepository.findOne({
+      where: {
+        channelId: team.channelId,
+        userId: targetUserId,
+      },
+      relations: ['user'],
+    });
   }
 }

@@ -99,8 +99,7 @@ export class ReportsService {
     const rooms = await this.roomRepository
       .createQueryBuilder("room")
       .select("room.roomId", "roomId")
-      .where("room.master = :userId", { userId })
-      .orWhere(":nickName = ANY(room.attendees)", { nickName })
+      .where("(room.master = :userId OR :nickName = ANY(room.attendees))", { userId, nickName })
       .getRawMany();
 
     return rooms.map((room) => room.roomId);
@@ -415,21 +414,62 @@ export class ReportsService {
       throw new NotFoundException(`User not found: ${userId}`);
     }
 
-    const report = await this.reportsRepository.findOne({
-      where: { reportId },
-      select: { reportId: true },
+    // reportId는 실제로 roomId - room 테이블에서 확인
+    let room = await this.roomRepository.findOne({
+      where: { roomId: reportId },
     });
+
+    // room이 없으면 자동 생성 (LiveKit에서 먼저 생성된 경우)
+    if (!room) {
+      this.logger.log(`Room not found in DB, creating: ${reportId}`);
+      room = this.roomRepository.create({
+        roomId: reportId,
+        topic: `Meeting ${reportId.substring(0, 8)}`,
+        description: 'Auto-created room',
+        master: userId,
+        attendees: [user.nickName],
+        maxParticipants: 20,
+        createdAt: new Date(),
+      });
+      await this.roomRepository.save(room);
+      this.logger.log(`Room created: ${reportId} by ${user.nickName}`);
+    } else {
+      // 기존 room이 있으면 권한 확인
+      const isMaster = room.master === userId;
+      const isAttendee = room.attendees.includes(user.nickName);
+
+      if (!isMaster && !isAttendee) {
+        throw new ForbiddenException("Not allowed to access this report");
+      }
+
+      // attendees에 없으면 추가
+      if (!isAttendee && !isMaster) {
+        room.attendees.push(user.nickName);
+        await this.roomRepository.save(room);
+        this.logger.log(`Added ${user.nickName} to room ${reportId}`);
+      }
+    }
+
+    // report가 없으면 자동 생성
+    let report = await this.reportsRepository.findOne({
+      where: { reportId },
+    });
+
     if (!report) {
-      throw new NotFoundException(`Report not found: ${reportId}`);
+      report = this.reportsRepository.create({
+        reportId,
+        topic: room.topic,
+        attendees: room.attendees,
+        createdAt: room.createdAt,
+      });
+      await this.reportsRepository.save(report);
+      this.logger.log(`Report created: ${reportId}`);
     }
 
     const reportIds = await this.getAccessibleReportIds(
       user.userId,
       user.nickName
     );
-    if (!reportIds.includes(reportId)) {
-      throw new ForbiddenException("Not allowed to access this report");
-    }
 
     return reportIds;
   }

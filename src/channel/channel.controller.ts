@@ -14,15 +14,15 @@ export class ChannelController {
    */
   @Post()
   async createChannel(@Body() createChannelDto: CreateChannelDto, @Request() req) {
-    return this.channelService.createChannel(createChannelDto, req.user.userId);
+    return this.channelService.createChannel(createChannelDto, req.user.id);
   }
 
   /**
-   * GET /channels - 내 채널 목록 조회
+   * GET /channels/my - 내 채널 목록 조회
    */
-  @Get()
+  @Get('my')
   async getMyChannels(@Request() req) {
-    return this.channelService.getMyChannels(req.user.userId);
+    return this.channelService.getMyChannels(req.user.id);
   }
 
   /**
@@ -30,7 +30,7 @@ export class ChannelController {
    */
   @Get(':channelId')
   async getChannelById(@Param('channelId') channelId: string, @Request() req) {
-    return this.channelService.getChannelById(channelId, req.user.userId);
+    return this.channelService.getChannelById(channelId, req.user.id);
   }
 
   /**
@@ -42,7 +42,7 @@ export class ChannelController {
     @Body() updateChannelDto: UpdateChannelDto,
     @Request() req
   ) {
-    return this.channelService.updateChannel(channelId, updateChannelDto, req.user.userId);
+    return this.channelService.updateChannel(channelId, updateChannelDto, req.user.id);
   }
 
   /**
@@ -50,7 +50,7 @@ export class ChannelController {
    */
   @Delete(':channelId')
   async deleteChannel(@Param('channelId') channelId: string, @Request() req) {
-    return this.channelService.deleteChannel(channelId, req.user.userId);
+    return this.channelService.deleteChannel(channelId, req.user.id);
   }
 
   /**
@@ -63,6 +63,6 @@ export class ChannelController {
     @Body('role') role: string,
     @Request() req
   ) {
-    return this.channelService.addMember(channelId, targetUserId, req.user.userId, role);
+    return this.channelService.addMember(channelId, targetUserId, req.user.id, role);
   }
 }
