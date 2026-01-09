@@ -5,6 +5,9 @@ import { AuthModule } from './auth/auth.module';
 import { ReportsModule } from './reports/reports.module';
 import { RoomModule } from './room/room.module';
 import { User } from './auth/entities/user.entity';
+import { Channel } from './channel/entities/channel.entity';
+import { ChannelMember } from './channel/entities/channel-member.entity';
+import { Team } from './channel/entities/team.entity';
 import { HealthController } from './health/health.controller';
 import {
   Room,
@@ -31,6 +34,9 @@ import { Team } from './channel/entities/team.entity';
         database: configService.get<string>('DB_NAME', 'aura'),
         entities: [
           User,
+          Channel,
+          ChannelMember,
+          Team,
           Room,
           RoomReport,
           Channel,
