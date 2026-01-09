@@ -4,6 +4,7 @@ import { TypeOrmModule } from '@nestjs/typeorm';
 import { AuthModule } from './auth/auth.module';
 import { ReportsModule } from './reports/reports.module';
 import { RoomModule } from './room/room.module';
+import { ChannelModule } from './channel/channel.module';
 import { User } from './auth/entities/user.entity';
 import { Channel } from './channel/entities/channel.entity';
 import { ChannelMember } from './channel/entities/channel-member.entity';
@@ -13,9 +14,7 @@ import {
   Room,
   RoomReport,
 } from './room/entities';
-import { Channel } from './channel/entities/channel.entity';
-import { ChannelMember } from './channel/entities/channel-member.entity';
-import { Team } from './channel/entities/team.entity';
+
 
 @Module({
   imports: [
@@ -39,9 +38,6 @@ import { Team } from './channel/entities/team.entity';
           Team,
           Room,
           RoomReport,
-          Channel,
-          ChannelMember,
-          Team,
         ],
         synchronize: configService.get<string>('NODE_ENV') !== 'production',
         logging: configService.get<string>('NODE_ENV') !== 'production',
@@ -54,6 +50,7 @@ import { Team } from './channel/entities/team.entity';
     AuthModule,
     ReportsModule,
     RoomModule,
+    ChannelModule,
   ],
   controllers: [HealthController],
 })

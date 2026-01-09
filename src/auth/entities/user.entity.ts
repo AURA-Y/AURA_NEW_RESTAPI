@@ -1,4 +1,4 @@
-import { Entity, PrimaryGeneratedColumn, Column, OneToMany } from 'typeorm';
+import { Entity, PrimaryGeneratedColumn, Column, OneToMany, CreateDateColumn, UpdateDateColumn } from 'typeorm';
 import { Channel } from '../../channel/entities/channel.entity';
 import { ChannelMember } from '../../channel/entities/channel-member.entity';
 import { Room } from '../../room/entities/room.entity';
@@ -20,14 +20,7 @@ export class User {
   @Column('text', { array: true, default: [] })
   roomReportIdxList: string[];
 
-  @OneToMany(() => Channel, (channel) => channel.owner)
-  ownedChannels: Channel[];
 
-  @OneToMany(() => ChannelMember, (member) => member.user)
-  memberships: ChannelMember[];
-
-  @OneToMany(() => Room, (room) => room.masterUser)
-  createdRooms: Room[];
   @CreateDateColumn({ type: "timestamp with time zone" })
   createdAt: Date;
 
