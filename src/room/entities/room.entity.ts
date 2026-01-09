@@ -51,7 +51,7 @@ export class Room {
   @Column({ type: "varchar", length: 255, nullable: true })
   reportId: string;
 
-  @ManyToOne(() => User)
+  @ManyToOne(() => User, (user) => user.createdRooms)
   @JoinColumn({ name: "master" })
   masterUser: User;
 }

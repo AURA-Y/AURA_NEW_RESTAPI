@@ -27,7 +27,7 @@ export class AuthService {
    * 회원가입
    */
   async register(registerDto: RegisterDto): Promise<AuthResponseDto> {
-    const { email, password, nickName } = registerDto;
+    const { email, userPassword, nickName } = registerDto;
 
     // 이메일 중복 확인
     const existingEmail = await this.userRepository.findOne({
@@ -48,7 +48,7 @@ export class AuthService {
     }
 
     // 비밀번호 해싱
-    const hashedPassword = await bcrypt.hash(password, 10);
+    const hashedPassword = await bcrypt.hash(userPassword, 10);
 
     // 사용자 생성
     const user = this.userRepository.create({
@@ -75,7 +75,7 @@ export class AuthService {
    * 로그인
    */
   async login(loginDto: LoginDto): Promise<AuthResponseDto> {
-    const { email, password } = loginDto;
+    const { email, userPassword } = loginDto;
 
     // 사용자 조회 (이메일로 찾기)
     const user = await this.userRepository.findOne({
@@ -93,7 +93,7 @@ export class AuthService {
     }
 
     // 비밀번호 확인
-    const isPasswordValid = await bcrypt.compare(password, user.userPassword);
+    const isPasswordValid = await bcrypt.compare(userPassword, user.userPassword);
 
     if (!isPasswordValid) {
       throw new UnauthorizedException('Invalid credentials');
