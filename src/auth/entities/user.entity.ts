@@ -36,6 +36,6 @@ export class User {
   @OneToMany(() => ChannelMember, (member) => member.user)
   memberships: ChannelMember[];
 
-  @OneToMany(() => Room, (room) => room.masterUser)
+  @OneToMany(() => Room, (room) => room.master)
   createdRooms: Room[];
 }

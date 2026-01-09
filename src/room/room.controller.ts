@@ -20,7 +20,7 @@ export class RoomController {
   async createRoom(@Body() createRoomDto: CreateRoomDto, @Request() req) {
     return this.roomService.createRoom({
       ...createRoomDto,
-      master: req.user.id,
+      masterId: req.user.id,
     });
   }
 

@@ -4,17 +4,15 @@ import {
   Column,
   CreateDateColumn,
   ManyToOne,
+  OneToMany,
+  OneToOne,
   JoinColumn,
 } from "typeorm";
 import { User } from "../../auth/entities/user.entity";
-
-export interface UploadFileItem {
-  fileId: string;
-  fileName: string;
-  fileUrl: string;
-  fileSize: number;
-  fileType: string;
-}
+import { Channel } from "../../channel/entities/channel.entity";
+import { Team } from "../../channel/entities/team.entity";
+import { RoomReport } from "./room-report.entity";
+import { File } from "./file.entity";
 
 @Entity("room")
 export class Room {
@@ -24,34 +22,48 @@ export class Room {
   @CreateDateColumn({ type: "timestamp with time zone" })
   createdAt: Date;
 
-  @Column({ type: "varchar", length: 500 })
+  @Column({ type: "varchar", length: 255 })
   topic: string;
 
-  @Column({ type: "varchar", length: 1000, nullable: true })
-  description: string;
+  @Column({ type: "text", nullable: true })
+  description?: string | null;
 
-  @Column({ type: "jsonb", default: [] })
-  upload_File_list: UploadFileItem[];
+  @Column({ type: "varchar", length: 50, nullable: true })
+  roomPassword?: string | null;
+
+  @Column({ type: "varchar", length: 255, unique: true })
+  shareLink: string;
+
+  @Column({ type: "uuid" })
+  masterId: string;
+
+  @ManyToOne(() => User, (user) => user.createdRooms, { onDelete: "CASCADE" })
+  @JoinColumn({ name: "masterId" })
+  master: User;
+
+  @Column({ type: "uuid" })
+  channelId: string;
+
+  @ManyToOne(() => Channel, (channel) => channel.rooms, { onDelete: "CASCADE" })
+  @JoinColumn({ name: "channelId" })
+  channel: Channel;
+
+  @Column({ type: "uuid", nullable: true })
+  teamId?: string | null;
+
+  @ManyToOne(() => Team, (team) => team.rooms, { onDelete: "SET NULL" })
+  @JoinColumn({ name: "teamId" })
+  team?: Team | null;
 
   @Column("text", { array: true, default: [] })
   attendees: string[];
 
-  @Column({ type: "integer", default: 20 })
-  maxParticipants: number;
-
   @Column({ type: "text", nullable: true })
-  token: string;
+  token?: string | null;
 
-  @Column({ type: "varchar", length: 500, nullable: true })
-  livekitUrl: string;
+  @OneToMany(() => File, (file) => file.room)
+  files: File[];
 
-  @Column({ type: "uuid" })
-  master: string;
-
-  @Column({ type: "varchar", length: 255, nullable: true })
-  reportId: string;
-
-  @ManyToOne(() => User)
-  @JoinColumn({ name: "master" })
-  masterUser: User;
+  @OneToOne(() => RoomReport, (report) => report.room)
+  report?: RoomReport | null;
 }

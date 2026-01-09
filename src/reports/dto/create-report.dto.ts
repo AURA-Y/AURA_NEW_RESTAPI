@@ -4,9 +4,12 @@ import {
   IsNumber,
   IsOptional,
   IsString,
+  IsEnum,
+  IsUUID,
   ValidateNested,
 } from "class-validator";
 import { Type } from "class-transformer";
+import { ReportScope } from "../../room/entities/room-report.entity";
 
 class ReportFileDto {
   @IsString()
@@ -35,7 +38,14 @@ export class CreateReportDto {
   reportId?: string;
 
   @IsString()
+  roomId: string;
+
+  @IsString()
   topic: string;
+
+  @IsOptional()
+  @IsString()
+  description?: string;
 
   @IsOptional()
   @IsString()
@@ -44,6 +54,15 @@ export class CreateReportDto {
   @IsArray()
   @IsString({ each: true })
   attendees: string[];
+
+  @IsOptional()
+  @IsEnum(ReportScope)
+  shareScope?: ReportScope;
+
+  @IsOptional()
+  @IsArray()
+  @IsUUID("4", { each: true })
+  specialAuth?: string[];
 
   @IsOptional()
   @IsISO8601()

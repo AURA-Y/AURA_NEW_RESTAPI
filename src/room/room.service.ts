@@ -6,18 +6,19 @@ import {
 import { InjectRepository } from "@nestjs/typeorm";
 import { Repository } from "typeorm";
 import { Room } from "./entities/room.entity";
+import { randomUUID } from "crypto";
 
 export interface CreateRoomDto {
   roomId: string;
   topic: string;
   description?: string;
-  master: string;
-  reportId?: string;
+  roomPassword?: string;
+  shareLink?: string;
+  masterId: string;
+  channelId: string;
+  teamId?: string;
   attendees?: string[];
-  maxParticipants?: number;
   token?: string;
-  livekitUrl?: string;
-  upload_File_list?: any[];
 }
 
 @Injectable()
@@ -32,13 +33,13 @@ export class RoomService {
       roomId: data.roomId,
       topic: data.topic,
       description: data.description,
-      master: data.master,
-      reportId: data.reportId,
+      roomPassword: data.roomPassword,
+      shareLink: data.shareLink || data.roomId || randomUUID(),
+      masterId: data.masterId,
+      channelId: data.channelId,
+      teamId: data.teamId ?? null,
       attendees: data.attendees || [],
-      maxParticipants: data.maxParticipants || 20,
-      token: data.token,
-      livekitUrl: data.livekitUrl,
-      upload_File_list: data.upload_File_list || [],
+      token: data.token ?? null,
     });
     return this.roomRepository.save(room);
   }
@@ -46,14 +47,14 @@ export class RoomService {
   async getAllRooms(): Promise<Room[]> {
     return this.roomRepository.find({
       order: { createdAt: "DESC" },
-      relations: ["masterUser"],
+      relations: ["master"],
     });
   }
 
   async getRoomById(roomId: string): Promise<Room> {
     const room = await this.roomRepository.findOne({
       where: { roomId },
-      relations: ["masterUser"],
+      relations: ["master"],
     });
 
     if (!room) {
@@ -80,7 +81,7 @@ export class RoomService {
   async deleteRoom(roomId: string, userId: string): Promise<void> {
     const room = await this.getRoomById(roomId);
 
-    if (room.master !== userId) {
+    if (room.masterId !== userId) {
       throw new ForbiddenException("Only the master can delete this room");
     }
 
@@ -105,7 +106,7 @@ export class RoomService {
   ): Promise<{ isMaster: boolean; role: "master" | "attendee" }> {
     const room = await this.getRoomById(roomId);
 
-    const isMaster = room.master === userId;
+    const isMaster = room.masterId === userId;
 
     return {
       isMaster,

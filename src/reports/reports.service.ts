@@ -1,4 +1,5 @@
 import {
+  BadRequestException,
   ForbiddenException,
   Injectable,
   Logger,
@@ -6,7 +7,7 @@ import {
 } from "@nestjs/common";
 import { InjectRepository } from "@nestjs/typeorm";
 import { Repository, In } from "typeorm";
-import { RoomReport } from "../room/entities/room-report.entity";
+import { RoomReport, ReportScope } from "../room/entities/room-report.entity";
 import { Room } from "../room/entities/room.entity";
 import { User } from "../auth/entities/user.entity";
 import {
@@ -99,11 +100,21 @@ export class ReportsService {
     const rooms = await this.roomRepository
       .createQueryBuilder("room")
       .select("room.roomId", "roomId")
-      .where("room.master = :userId", { userId })
+      .where("room.masterId = :userId", { userId })
       .orWhere(":nickName = ANY(room.attendees)", { nickName })
       .getRawMany();
 
-    return rooms.map((room) => room.roomId);
+    const roomIds = rooms.map((room) => room.roomId);
+    if (roomIds.length === 0) {
+      return [];
+    }
+
+    const reports = await this.reportsRepository.find({
+      where: { roomId: In(roomIds) },
+      select: { reportId: true },
+    });
+
+    return reports.map((report) => report.reportId);
   }
 
   async findByIds(reportIds: string[]): Promise<RoomReport[]> {
@@ -285,23 +296,46 @@ export class ReportsService {
   // 보고서 생성: DB 메타 + S3 JSON 기록
   async createReport(payload: {
     reportId?: string;
+    roomId?: string;
     userId: string;
     topic: string;
+    description?: string;
     summary?: string;
     attendees: string[];
+    shareScope?: ReportScope;
+    specialAuth?: string[];
     uploadFileList: FileInfo[];
     createdAt?: string;
   }): Promise<ReportDetails> {
-    const reportId = payload.reportId || randomUUID();
+    const reportId = payload.reportId || payload.roomId || randomUUID();
+    const roomId = payload.roomId || reportId;
+    if (!roomId) {
+      throw new BadRequestException("roomId is required");
+    }
+
+    const room = await this.roomRepository.findOne({
+      where: { roomId },
+      select: { roomId: true, channelId: true, teamId: true },
+    });
+    if (!room) {
+      throw new NotFoundException(`Room not found: ${roomId}`);
+    }
+
     const createdAt = payload.createdAt || new Date().toISOString();
     const summary =
-      payload.summary || "회의 요약: 회의 종료 시점에 자동 생성됩니다.";
+      payload.summary || "????? ?????: ????? ?????? ???????????? ????????????";
 
     const meta = this.reportsRepository.create({
       reportId,
+      roomId,
+      channelId: room.channelId,
+      teamId: room.teamId ?? null,
       createdAt: new Date(createdAt),
       topic: payload.topic,
+      description: payload.description,
       attendees: payload.attendees,
+      shareScope: payload.shareScope ?? ReportScope.CHANNEL,
+      specialAuth: payload.specialAuth ?? [],
     });
     await this.reportsRepository.save(meta);
 

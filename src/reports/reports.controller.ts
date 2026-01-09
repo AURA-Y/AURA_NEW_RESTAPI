@@ -155,11 +155,11 @@ export class ReportsController {
     if (!targetUserId) {
       throw new Error("userId is required from token");
     }
-    const roomReportIdxList = await this.reportsService.attachReportToUser(
+    const reportIds = await this.reportsService.attachReportToUser(
       targetUserId,
       id
     );
-    return { roomReportIdxList };
+    return { reportIds };
   }
 
   // 회의 종료 등으로 회의록 확정

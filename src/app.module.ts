@@ -12,6 +12,7 @@ import { HealthController } from './health/health.controller';
 import {
   Room,
   RoomReport,
+  File,
 } from './room/entities';
 
 @Module({
@@ -36,6 +37,7 @@ import {
           Team,
           Room,
           RoomReport,
+          File,
         ],
         synchronize: configService.get<string>('NODE_ENV') !== 'production',
         logging: configService.get<string>('NODE_ENV') !== 'production',

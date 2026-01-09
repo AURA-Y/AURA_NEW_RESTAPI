@@ -9,7 +9,7 @@ export class RegisterDto {
   @IsNotEmpty()
   @MinLength(6)
   @MaxLength(100)
-  password: string;
+  userPassword: string;
 
   @IsString()
   @IsNotEmpty()
