@@ -87,12 +87,12 @@ model Team {
 }
 
 model Room {
-  roomId       String   @id @db.VarChar(255) // LiveKit roomId
-  topic        String   @db.VarChar(255)
-  description  String?  @db.Text
-  roomPassword String?  @db.VarChar(50)
-  shareLink    String   @unique
-  createdAt    DateTime @default(now())
+  roomId          String   @id @db.VarChar(255) // 회의방 고유 ID 백엔드에서 생성 room- 형식
+  roomTopic       String   @db.VarChar(255)     // 생성자가 작성한 회의 주제
+  roomDescription String?  @db.Text             // 생성자가 작성한 회의 목표
+  roomPassword    String?  @db.VarChar(50)      // 생성자가 설정한 회의방 비번
+  roomShareLink   String   @unique              // 회의방 공유 링크
+  createdAt       DateTime @default(now())      // 회의방 생성 일시
 
   // 방장 정보
   masterId String @db.Uuid
