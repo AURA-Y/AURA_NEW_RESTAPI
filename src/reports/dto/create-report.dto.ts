@@ -4,6 +4,8 @@ import {
   IsNumber,
   IsOptional,
   IsString,
+  IsNotEmpty,
+  IsUUID,
   ValidateNested,
 } from "class-validator";
 import { Type } from "class-transformer";
@@ -30,12 +32,20 @@ class ReportFileDto {
 }
 
 export class CreateReportDto {
+  @IsString()
+  @IsNotEmpty({ message: 'Room ID 미입력' })
+  roomId: string;
+
+  @IsUUID()
+  @IsNotEmpty({ message: '채널 ID 미입력' })
+  channelId: string;
+
   @IsOptional()
   @IsString()
   reportId?: string;
 
   @IsString()
-  topic: string;
+  roomTopic: string;
 
   @IsOptional()
   @IsString()

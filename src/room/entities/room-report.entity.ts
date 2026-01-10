@@ -55,12 +55,12 @@ export class RoomReport {
   room: Room;
 
   // Channel 관계 (nullable: 기존 레코드 마이그레이션 지원)
-  @Column({ type: "uuid", nullable: true })
-  channelId: string | null;
+  @Column({ type: "uuid", nullable: false })
+  channelId: string;
 
   @ManyToOne(() => Channel, (channel) => channel.reports, { onDelete: "CASCADE" })
   @JoinColumn({ name: "channelId" })
-  channel: Channel | null;
+  channel: Channel;
 
   // Team 관계 (선택)
   @Column({ type: "uuid", nullable: true })

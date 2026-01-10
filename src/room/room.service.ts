@@ -6,25 +6,14 @@ import {
 import { InjectRepository } from "@nestjs/typeorm";
 import { Repository } from "typeorm";
 import { Room } from "./entities/room.entity";
-
-export interface CreateRoomDto {
-  roomId: string;          // livekit-backend에서 생성된 roomId (room-timestamp-random)
-  topic: string;           // 방 제목
-  description?: string;
-  masterId: string;        // 방장 userId
-  channelId?: string;      // 채널 ID (선택 - 자동 생성 시 null 가능)
-  teamId?: string;         // 팀 ID (선택)
-  roomPassword?: string;
-  attendees?: string[];
-  token?: string;
-}
+import { CreateRoomDto } from "./dto/create-room.dto";  // ✅ class import
 
 @Injectable()
 export class RoomService {
   constructor(
     @InjectRepository(Room)
     private roomRepository: Repository<Room>
-  ) {}
+  ) { }
 
   /**
    * 공유 링크 생성 (roomId 기반)
@@ -39,13 +28,13 @@ export class RoomService {
   async createRoom(data: CreateRoomDto): Promise<Room> {
     const room = this.roomRepository.create({
       roomId: data.roomId,
-      topic: data.topic,
-      description: data.description || null,
+      roomTopic: data.roomTopic,
+      roomDescription: data.roomDescription || null,
       masterId: data.masterId,
-      channelId: data.channelId || null,
+      channelId: data.channelId,
       teamId: data.teamId || null,
       roomPassword: data.roomPassword || null,
-      shareLink: this.generateShareLink(data.roomId),
+      roomShareLink: this.generateShareLink(data.roomId),
       attendees: data.attendees || [],
       token: data.token || null,
     });
@@ -72,22 +61,22 @@ export class RoomService {
     return room;
   }
 
-  async getRoomByTopic(topic: string): Promise<{ roomId: string }> {
+  async getRoomByTopic(roomTopic: string): Promise<{ roomId: string }> {
     const room = await this.roomRepository.findOne({
-      where: { topic },
+      where: { roomTopic },
       select: ["roomId"],
     });
 
     if (!room) {
-      throw new NotFoundException(`Room with topic "${topic}" not found`);
+      throw new NotFoundException(`Room with topic "${roomTopic}" not found`);
     }
 
     return { roomId: room.roomId };
   }
 
-  async getRoomByShareLink(shareLink: string): Promise<Room> {
+  async getRoomByShareLink(roomShareLink: string): Promise<Room> {
     const room = await this.roomRepository.findOne({
-      where: { shareLink },
+      where: { roomShareLink },
       relations: ["master", "channel"],
     });
 

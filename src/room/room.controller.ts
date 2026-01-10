@@ -8,13 +8,14 @@ import {
   UseGuards,
   Request,
 } from "@nestjs/common";
-import { RoomService, CreateRoomDto } from "./room.service";
+import { RoomService } from "./room.service";
+import { CreateRoomDto } from "./dto/create-room.dto";
 import { JwtAuthGuard } from "../auth/guards/jwt-auth.guard";
 
 @Controller("rooms")
 @UseGuards(JwtAuthGuard)
 export class RoomController {
-  constructor(private readonly roomService: RoomService) {}
+  constructor(private readonly roomService: RoomService) { }
 
   @Post()
   async createRoom(@Body() createRoomDto: CreateRoomDto, @Request() req) {

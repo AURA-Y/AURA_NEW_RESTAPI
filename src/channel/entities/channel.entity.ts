@@ -21,9 +21,6 @@ export class Channel {
   @Column({ type: "varchar", length: 100 })
   channelName: string;
 
-  @Column({ type: "text", nullable: true })
-  channelImg?: string;
-
   @CreateDateColumn({ type: "timestamp with time zone" })
   createdAt: Date;
 

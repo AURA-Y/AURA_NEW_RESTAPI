@@ -19,32 +19,32 @@ export class Room {
   @PrimaryColumn({ type: "varchar", length: 255 })
   roomId: string; // LiveKit roomId (UUID 형식 권장)
 
-  @Column({ type: "varchar", length: 255, nullable: true })
-  topic: string | null; // 방 제목 (표시용)
+  @Column({ type: "varchar", length: 255, nullable: false })
+  roomTopic: string; // 방 제목 (표시용)
 
   @Column({ type: "text", nullable: true })
-  description: string | null;
+  roomDescription: string | null;
 
   @Column({ type: "varchar", length: 50, nullable: true })
   roomPassword: string | null;
 
-  @Column({ type: "varchar", length: 255, unique: true, nullable: true })
-  shareLink: string | null; // 공유 링크
+  @Column({ type: "varchar", length: 255, unique: true })
+  roomShareLink: string; // 공유 링크
 
   @CreateDateColumn({ type: "timestamp with time zone" })
   createdAt: Date;
 
   // 방장 정보 (nullable: 기존 레코드 마이그레이션 지원)
-  @Column({ type: "uuid", nullable: true })
-  masterId: string | null;
+  @Column({ type: "uuid", nullable: false })
+  masterId: string;
 
   @ManyToOne(() => User, (user) => user.createdRooms, { onDelete: "CASCADE" })
   @JoinColumn({ name: "masterId" })
   master: User;
 
   // 채널 소속 (선택 - 자동 생성 시 null 가능)
-  @Column({ type: "uuid", nullable: true })
-  channelId: string | null;
+  @Column({ type: "uuid", nullable: false })
+  channelId: string;
 
   @ManyToOne(() => Channel, (channel) => channel.rooms, { onDelete: "CASCADE" })
   @JoinColumn({ name: "channelId" })

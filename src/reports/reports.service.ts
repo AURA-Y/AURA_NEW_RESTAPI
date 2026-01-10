@@ -35,11 +35,13 @@ export interface FileInfo {
 
 export interface ReportDetails {
   reportId: string;
+  roomId: string;
   createdAt: string;
-  topic: string;
+  roomTopic: string;
   summary: string;
   attendees: string[];
   uploadFileList: FileInfo[];
+  channelId?: string;
 }
 
 @Injectable()
@@ -283,13 +285,15 @@ export class ReportsService {
 
   // 보고서 생성: DB 메타 + S3 JSON 기록
   async createReport(payload: {
+    roomId: string;
     reportId?: string;
     userId: string;
-    topic: string;
+    roomTopic: string;
     summary?: string;
     attendees: string[];
     uploadFileList: FileInfo[];
     createdAt?: string;
+    channelId: string;
   }): Promise<ReportDetails> {
     const reportId = payload.reportId || randomUUID();
     const createdAt = payload.createdAt || new Date().toISOString();
@@ -298,19 +302,23 @@ export class ReportsService {
 
     const meta = this.reportsRepository.create({
       reportId,
+      roomId: payload.roomId,
       createdAt: new Date(createdAt),
-      topic: payload.topic,
+      topic: payload.roomTopic,
       attendees: payload.attendees,
+      channelId: payload.channelId,
     });
     await this.reportsRepository.save(meta);
 
     const details: ReportDetails = {
       reportId,
+      roomId: payload.roomId,
       createdAt,
-      topic: payload.topic,
+      roomTopic: payload.roomTopic,
       summary,
       attendees: payload.attendees,
       uploadFileList: payload.uploadFileList || [],
+      channelId: payload.channelId,
     };
     await this.saveReportDetailsToS3(details);
 
@@ -322,11 +330,10 @@ export class ReportsService {
       "AWS_REGION",
       "ap-northeast-2"
     );
-    const markdownUrl = `https://${
-      this.bucketName
-    }.s3.${region}.amazonaws.com/${this.getReportMarkdownKey(
-      details.reportId
-    )}`;
+    const markdownUrl = `https://${this.bucketName
+      }.s3.${region}.amazonaws.com/${this.getReportMarkdownKey(
+        details.reportId
+      )}`;
 
     // 1. report.json 저장 (summary에 마크다운 파일 URL 저장, 실제 파일은 생성하지 않음)
     const jsonPayload = {
@@ -358,7 +365,7 @@ export class ReportsService {
     await this.reportsRepository.update(
       { reportId },
       {
-        topic: updated.topic,
+        topic: updated.roomTopic,
         attendees: updated.attendees,
         createdAt: new Date(updated.createdAt),
       }
@@ -419,24 +426,9 @@ export class ReportsService {
       where: { roomId: reportId },
     });
 
-    // room이 없으면 자동 생성 (LiveKit에서 먼저 생성된 경우)
+    // room이 없으면 오류
     if (!room) {
-      this.logger.log(`Room not found in DB, creating: ${reportId}`);
-      // roomId에서 고유 부분 추출하여 shareLink 생성
-      const parts = reportId.split("-");
-      const shortId = parts.length >= 3 ? parts[2] : reportId.slice(-8);
-      room = this.roomRepository.create({
-        roomId: reportId,
-        topic: `Meeting ${reportId.substring(0, 8)}`,
-        description: 'Auto-created room',
-        masterId: userId,
-        channelId: null,  // 자동 생성 시 채널 미지정
-        shareLink: `aura.ai.kr/join/${shortId}`,
-        attendees: [user.nickName],
-        createdAt: new Date(),
-      });
-      await this.roomRepository.save(room);
-      this.logger.log(`Room created: ${reportId} by ${user.nickName}`);
+      throw new NotFoundException(`Room not found: ${reportId}`);
     } else {
       // 기존 room이 있으면 권한 확인
       const isMaster = room.masterId === userId;
@@ -460,14 +452,7 @@ export class ReportsService {
     });
 
     if (!report) {
-      report = this.reportsRepository.create({
-        reportId,
-        topic: room.topic,
-        attendees: room.attendees,
-        createdAt: room.createdAt,
-      });
-      await this.reportsRepository.save(report);
-      this.logger.log(`Report created: ${reportId}`);
+      throw new NotFoundException(`Report not found: ${reportId}`);
     }
 
     const reportIds = await this.getAccessibleReportIds(
