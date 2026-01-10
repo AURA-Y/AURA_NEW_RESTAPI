@@ -10,6 +10,7 @@ import {
 import { User } from "../../auth/entities/user.entity";
 import { ChannelMember } from "./channel-member.entity";
 import { Team } from "./team.entity";
+import { Room } from "../../room/entities/room.entity";
 
 @Entity("channel")
 export class Channel {
@@ -37,4 +38,7 @@ export class Channel {
 
   @OneToMany(() => Team, (team) => team.channel)
   teams: Team[];
+
+  @OneToMany(() => Room, (room) => room.channel)
+  rooms: Room[];
 }

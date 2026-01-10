@@ -17,9 +17,6 @@ export class User {
   @Column({ type: "varchar", length: 100, unique: true })
   nickName: string;
 
-  @Column('text', { array: true, default: [] })
-  roomReportIdxList: string[];
-
 
   @CreateDateColumn({ type: "timestamp with time zone" })
   createdAt: Date;

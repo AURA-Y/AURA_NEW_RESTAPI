@@ -7,7 +7,6 @@ export class AuthResponseDto {
     email: string;
     nickName: string;
     nickname: string;
-    roomReportIdxList?: string[];
     createdAt?: Date;
     updatedAt?: Date;
   };
@@ -20,7 +19,6 @@ export class AuthResponseDto {
       email: string;
       nickName: string;
       nickname: string;
-      roomReportIdxList?: string[];
       createdAt?: Date;
       updatedAt?: Date;
     },

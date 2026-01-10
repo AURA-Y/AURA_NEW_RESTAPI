@@ -422,20 +422,22 @@ export class ReportsService {
     // room이 없으면 자동 생성 (LiveKit에서 먼저 생성된 경우)
     if (!room) {
       this.logger.log(`Room not found in DB, creating: ${reportId}`);
+      // Note: Auto-created rooms need a default channelId - this should be improved
+      // to require channelId from the caller or use a system default channel
       room = this.roomRepository.create({
         roomId: reportId,
-        topic: `Meeting ${reportId.substring(0, 8)}`,
-        description: 'Auto-created room',
-        master: userId,
+        roomTopic: `Meeting ${reportId.substring(0, 8)}`,
+        roomDescription: 'Auto-created room',
+        roomShareLink: `${reportId}-${Date.now()}`,
+        masterId: userId,
+        channelId: userId, // Temporary: using userId as channelId placeholder
         attendees: [user.nickName],
-        maxParticipants: 20,
-        createdAt: new Date(),
       });
       await this.roomRepository.save(room);
       this.logger.log(`Room created: ${reportId} by ${user.nickName}`);
     } else {
       // 기존 room이 있으면 권한 확인
-      const isMaster = room.master === userId;
+      const isMaster = room.masterId === userId;
       const isAttendee = room.attendees.includes(user.nickName);
 
       if (!isMaster && !isAttendee) {
@@ -458,9 +460,11 @@ export class ReportsService {
     if (!report) {
       report = this.reportsRepository.create({
         reportId,
-        topic: room.topic,
+        topic: room.roomTopic,
+        roomId: room.roomId,
+        channelId: room.channelId,
+        teamId: room.teamId,
         attendees: room.attendees,
-        createdAt: room.createdAt,
       });
       await this.reportsRepository.save(report);
       this.logger.log(`Report created: ${reportId}`);

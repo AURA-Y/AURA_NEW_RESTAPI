@@ -3,32 +3,26 @@ generator client {
   provider = "prisma-client-js"
   output   = "../generated/prisma"
 }
-
 datasource db {
   provider = "postgresql"
 }
-
 // --------------------------------------
 // 1. Enums (열거형)
 // --------------------------------------
-
 enum ChannelRole {
   OWNER // 채널 소유자 (회사 대표)
   ADMIN // 관리자
   MEMBER // 일반 멤버
 }
-
 enum ReportScope {
   PUBLIC // 전체 공개
   TEAM // 특정 팀 공개
   CHANNEL // 채널 전체 공개
   PRIVATE // 참여자만 공개
 }
-
 // --------------------------------------
 // 2. Models
 // --------------------------------------
-
 model User {
   userId       String   @id @default(uuid()) @db.Uuid
   email        String   @unique @db.VarChar(255)
@@ -36,94 +30,87 @@ model User {
   nickName     String   @unique @db.VarChar(100)
   createdAt    DateTime @default(now())
   updatedAt    DateTime @updatedAt
-
   // 관계 설정
   ownedChannels Channel[]       @relation("ChannelOwner") // 내가 만든 채널들
   memberships   ChannelMember[] // 내가 소속된 채널 및 역할 정보
   createdRooms  Room[]          @relation("RoomMaster") // 내가 방장인 회의방들
 }
-
 model Channel {
   channelId   String   @id @default(uuid()) @db.Uuid
   channelName String   @db.VarChar(100)
   createdAt   DateTime @default(now())
-
   // 소유자 관계
   ownerId String @db.Uuid
   owner   User   @relation("ChannelOwner", fields: [ownerId], references: [userId])
-
   // 채널 내 리소스
   members ChannelMember[]
   teams   Team[]
   rooms   Room[]
   reports RoomReport[]
 }
-
 model ChannelMember {
   userId    String      @db.Uuid
   channelId String      @db.Uuid
   teamId    String?     @db.Uuid // 소속된 팀 (없을 수 있음)
   role      ChannelRole @default(MEMBER)
   joinedAt  DateTime    @default(now())
-
+  
   user    User    @relation(fields: [userId], references: [userId])
   channel Channel @relation(fields: [channelId], references: [channelId])
   team    Team?   @relation(fields: [teamId], references: [teamId])
-
+  
   @@id([channelId, userId]) // 복합키 설정
 }
+
 
 model Team {
   teamId    String   @id @default(uuid()) @db.Uuid
   teamName  String   @db.VarChar(100)
   createdAt DateTime @default(now())
-
+  
   channelId String  @db.Uuid
   channel   Channel @relation(fields: [channelId], references: [channelId])
-
+  
   members ChannelMember[] // 팀에 속한 멤버들
   rooms   Room[] // 팀 전용 회의방
   reports RoomReport[] // 팀 리포트
 }
-
 model Room {
-  roomId       String   @id @db.VarChar(255) // LiveKit roomId
-  topic        String   @db.VarChar(255)
-  description  String?  @db.Text
-  roomPassword String?  @db.VarChar(50)
-  shareLink    String   @unique
-  createdAt    DateTime @default(now())
-
+  roomId          String   @id @db.VarChar(255) // 회의방 고유 ID 백엔드에서 생성 room- 형식
+  
+  roomTopic       String   @db.VarChar(255)     // 생성자가 작성한 회의 주제
+  roomDescription String?  @db.Text             // 생성자가 작성한 회의 목표
+  roomPassword    String?  @db.VarChar(50)      // 생성자가 설정한 회의방 비번
+  roomShareLink   String   @unique              // 회의방 공유 링크
+  createdAt       DateTime @default(now())      // 회의방 생성 일시
+  
   // 방장 정보
   masterId String @db.Uuid
   master   User   @relation("RoomMaster", fields: [masterId], references: [userId])
-
+  
   // 소속 정보
   channelId String  @db.Uuid
   channel   Channel @relation(fields: [channelId], references: [channelId])
   teamId    String? @db.Uuid
   team      Team?   @relation(fields: [teamId], references: [teamId])
-
   // 회의 데이터
-  attendees String[] @default([]) 
+  attendees String[] @default([])
   token     String? @db.Text // 미디어 서버 접속용 토큰
-
-  // 파일 및 리포트 
+  // 파일 및 리포트
   files  File[] // 회의 중 업로드된 파일 리스트
   report RoomReport? // 일대일 관계 (최종 요약본 하나만)
 }
-
 model RoomReport {
   reportId    String   @id @db.VarChar(255) // roomId와 동일한 값
   topic       String   @db.VarChar(255)
   description String?  @db.Text
-  attendees   String[] @default([]) 
+  attendees   String[] @default([])
   createdAt   DateTime @default(now())
-
+  
   // 권한 범위 설정
   shareScope  ReportScope @default(CHANNEL)
   specialAuth String[]    @default([]) @db.Uuid // 특별 열람 권한을 가진 userId 배열
-
+  
   // 관계 설정
   roomId    String  @unique @db.VarChar(255) // Room과 타입 일치
   room      Room    @relation(fields: [roomId], references: [roomId])
@@ -132,14 +119,12 @@ model RoomReport {
   teamId    String? @db.Uuid
   team      Team?   @relation(fields: [teamId], references: [teamId])
 }
-
 model File {
   fileId    String   @id @default(uuid()) @db.Uuid
   fileName  String   @db.VarChar(255)
   fileUrl   String   @db.Text
   fileSize  Int
   createdAt DateTime @default(now())
-
   roomId String @db.VarChar(255) // Room과 타입 일치
   room   Room   @relation(fields: [roomId], references: [roomId])
 }

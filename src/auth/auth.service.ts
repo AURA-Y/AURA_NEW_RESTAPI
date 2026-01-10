@@ -71,7 +71,6 @@ export class AuthService {
       email: user.email,
       nickName: user.nickName,
       nickname: user.nickName,
-      roomReportIdxList: user.roomReportIdxList || [],
       createdAt: user.createdAt,
       updatedAt: user.updatedAt,
     });
@@ -91,7 +90,6 @@ export class AuthService {
         email: true,
         nickName: true,
         userPassword: true,
-        roomReportIdxList: true,
         createdAt: true,
         updatedAt: true,
       },
@@ -119,7 +117,6 @@ export class AuthService {
       email: user.email,
       nickName: user.nickName,
       nickname: user.nickName,
-      roomReportIdxList: user.roomReportIdxList || [],
       createdAt: user.createdAt,
       updatedAt: user.updatedAt,
     });
@@ -205,7 +202,6 @@ export class AuthService {
       email: user.email,
       nickName: user.nickName,
       nickname: user.nickName,
-      roomReportIdxList: user.roomReportIdxList || [],
       createdAt: user.createdAt,
       updatedAt: user.updatedAt,
     });

@@ -9,15 +9,14 @@ import { Room } from "./entities/room.entity";
 
 export interface CreateRoomDto {
   roomId: string;
-  topic: string;
-  description?: string;
-  master: string;
-  reportId?: string;
+  roomTopic: string;
+  roomDescription?: string;
+  roomPassword?: string;
+  masterId: string;
+  channelId: string;
+  teamId?: string;
   attendees?: string[];
-  maxParticipants?: number;
   token?: string;
-  livekitUrl?: string;
-  upload_File_list?: any[];
 }
 
 @Injectable()
@@ -30,15 +29,15 @@ export class RoomService {
   async createRoom(data: CreateRoomDto): Promise<Room> {
     const room = this.roomRepository.create({
       roomId: data.roomId,
-      topic: data.topic,
-      description: data.description,
-      master: data.master,
-      reportId: data.reportId,
+      roomTopic: data.roomTopic,
+      roomDescription: data.roomDescription,
+      roomPassword: data.roomPassword,
+      roomShareLink: `${data.roomId}-${Date.now()}`,
+      masterId: data.masterId,
+      channelId: data.channelId,
+      teamId: data.teamId,
       attendees: data.attendees || [],
-      maxParticipants: data.maxParticipants || 20,
       token: data.token,
-      livekitUrl: data.livekitUrl,
-      upload_File_list: data.upload_File_list || [],
     });
     return this.roomRepository.save(room);
   }
@@ -64,14 +63,14 @@ export class RoomService {
     return room;
   }
 
-  async getRoomByTopic(topic: string): Promise<{ roomId: string }> {
+  async getRoomByTopic(roomTopic: string): Promise<{ roomId: string }> {
     const room = await this.roomRepository.findOne({
-      where: { topic },
+      where: { roomTopic },
       select: ["roomId"],
     });
 
     if (!room) {
-      throw new NotFoundException(`Room with topic "${topic}" not found`);
+      throw new NotFoundException(`Room with topic "${roomTopic}" not found`);
     }
 
     return { roomId: room.roomId };
@@ -80,7 +79,7 @@ export class RoomService {
   async deleteRoom(roomId: string, userId: string): Promise<void> {
     const room = await this.getRoomById(roomId);
 
-    if (room.master !== userId) {
+    if (room.masterId !== userId) {
       throw new ForbiddenException("Only the master can delete this room");
     }
 
@@ -105,7 +104,7 @@ export class RoomService {
   ): Promise<{ isMaster: boolean; role: "master" | "attendee" }> {
     const room = await this.getRoomById(roomId);
 
-    const isMaster = room.master === userId;
+    const isMaster = room.masterId === userId;
 
     return {
       isMaster,
