@@ -126,7 +126,7 @@ model RoomReport {
 
   // 관계 설정
   roomId    String  @unique @db.VarChar(255) // Room과 타입 일치
-  room      Room    @relation(fields: [roomId], references: [roomId])
+  room      Room    @relation(fields: [roomId], references: [roomId], onDelete: Cascade)
   channelId String  @db.Uuid
   channel   Channel @relation(fields: [channelId], references: [channelId])
   teamId    String? @db.Uuid
