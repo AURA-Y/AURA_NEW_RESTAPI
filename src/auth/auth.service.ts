@@ -12,6 +12,7 @@ import { User } from './entities/user.entity';
 import { RegisterDto } from './dto/register.dto';
 import { LoginDto } from './dto/login.dto';
 import { AuthResponseDto } from './dto/auth-response.dto';
+import { UpdateProfileDto } from './dto/update-profile.dto';
 
 @Injectable()
 export class AuthService {
@@ -152,5 +153,61 @@ export class AuthService {
       where: { nickName: nickname },
     });
     return !existingUser; // 사용자가 없으면 true (사용 가능)
+  }
+
+  /**
+   * 회원정보 수정
+   */
+  async updateProfile(userId: string, updateProfileDto: UpdateProfileDto): Promise<AuthResponseDto> {
+    const { nickName, currentPassword, newPassword } = updateProfileDto;
+
+    const user = await this.userRepository.findOne({ where: { userId } });
+    if (!user) {
+      throw new UnauthorizedException('User not found');
+    }
+
+    // 닉네임 변경 시 중복 확인
+    if (nickName && nickName !== user.nickName) {
+      const existingNickname = await this.userRepository.findOne({
+        where: { nickName },
+      });
+      if (existingNickname) {
+        throw new ConflictException('Nickname already exists');
+      }
+      user.nickName = nickName;
+    }
+
+    // 비밀번호 변경
+    if (newPassword) {
+      if (!currentPassword) {
+        throw new ConflictException('Current password is required to set a new password');
+      }
+
+      const isPasswordValid = await bcrypt.compare(currentPassword, user.userPassword);
+      if (!isPasswordValid) {
+        throw new UnauthorizedException('Invalid current password');
+      }
+
+      const hashedPassword = await bcrypt.hash(newPassword, 10);
+      user.userPassword = hashedPassword;
+    }
+
+    await this.userRepository.save(user);
+
+    this.logger.log(`User profile updated: ${user.nickName} (${user.email})`);
+
+    // 새 토큰 발급 (선택사항이나 정보가 바뀌었으므로 갱신)
+    const accessToken = this.generateToken(user);
+
+    return new AuthResponseDto(accessToken, {
+      id: user.userId,
+      userId: user.userId,
+      email: user.email,
+      nickName: user.nickName,
+      nickname: user.nickName,
+      roomReportIdxList: user.roomReportIdxList || [],
+      createdAt: user.createdAt,
+      updatedAt: user.updatedAt,
+    });
   }
 }
