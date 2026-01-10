@@ -210,4 +210,12 @@ export class AuthService {
       updatedAt: user.updatedAt,
     });
   }
+
+  async withdraw(userId: string): Promise<void> {
+    const user = await this.userRepository.findOne({ where: { userId } });
+    if (!user) {
+      throw new UnauthorizedException('User not found');
+    }
+    await this.userRepository.remove(user);
+  }
 }

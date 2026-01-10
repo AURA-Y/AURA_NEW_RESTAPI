@@ -10,6 +10,7 @@ import {
   Patch,
   UseGuards,
   Req,
+  Delete,
 } from '@nestjs/common';
 import { AuthService } from './auth.service';
 import { RegisterDto } from './dto/register.dto';
@@ -37,6 +38,9 @@ export class AuthController {
   /**
    * 로그인
    * POST /auth/login
+   * 
+   * @throws {UnauthorizedException} 401 - Invalid credentials (이메일 또는 비밀번호 불일치)
+   * @throws {InternalServerErrorException} 500 - Internal Server Error (서버 에러)
    */
   @Post('login')
   @HttpCode(HttpStatus.OK)
@@ -76,5 +80,16 @@ export class AuthController {
     @Body(ValidationPipe) updateProfileDto: UpdateProfileDto,
   ): Promise<AuthResponseDto> {
     return this.authService.updateProfile(req.user.userId, updateProfileDto);
+  }
+
+  /**
+   * 회원 탈퇴
+   * DELETE /auth/withdraw
+   */
+  @UseGuards(JwtAuthGuard)
+  @Delete('withdraw')
+  @HttpCode(HttpStatus.OK)
+  async withdraw(@Req() req: any): Promise<void> {
+    return this.authService.withdraw(req.user.userId);
   }
 }
