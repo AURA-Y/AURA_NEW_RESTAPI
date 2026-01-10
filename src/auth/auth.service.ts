@@ -66,9 +66,12 @@ export class AuthService {
 
     return new AuthResponseDto(accessToken, {
       id: user.userId,
+      userId: user.userId,
       email: user.email,
       nickName: user.nickName,
-      roomReportIdxList: user.roomReportIdxList || [],
+      nickname: user.nickName,
+      createdAt: user.createdAt,
+      updatedAt: user.updatedAt,
     });
   }
 
@@ -81,6 +84,14 @@ export class AuthService {
     // 사용자 조회 (이메일로 찾기)
     const user = await this.userRepository.findOne({
       where: { email },
+      select: {
+        userId: true,
+        email: true,
+        nickName: true,
+        userPassword: true,
+        createdAt: true,
+        updatedAt: true,
+      },
     });
 
     if (!user) {
@@ -101,9 +112,12 @@ export class AuthService {
 
     return new AuthResponseDto(accessToken, {
       id: user.userId,
+      userId: user.userId,
       email: user.email,
       nickName: user.nickName,
-      roomReportIdxList: user.roomReportIdxList || [],
+      nickname: user.nickName,
+      createdAt: user.createdAt,
+      updatedAt: user.updatedAt,
     });
   }
 

@@ -4,12 +4,18 @@ import { TypeOrmModule } from '@nestjs/typeorm';
 import { AuthModule } from './auth/auth.module';
 import { ReportsModule } from './reports/reports.module';
 import { RoomModule } from './room/room.module';
+import { ChannelModule } from './channel/channel.module';
 import { User } from './auth/entities/user.entity';
+import { Channel } from './channel/entities/channel.entity';
+import { ChannelMember } from './channel/entities/channel-member.entity';
+import { Team } from './channel/entities/team.entity';
 import { HealthController } from './health/health.controller';
 import {
   Room,
   RoomReport,
+  File,
 } from './room/entities';
+
 
 @Module({
   imports: [
@@ -28,10 +34,15 @@ import {
         database: configService.get<string>('DB_NAME', 'aura'),
         entities: [
           User,
+          Channel,
+          ChannelMember,
+          Team,
           Room,
           RoomReport,
+          File,
         ],
-        synchronize: configService.get<string>('NODE_ENV') !== 'production',
+        // synchronize: configService.get<string>('NODE_ENV') !== 'production',
+        synchronize: false, // 원격 DB 사용 시 스키마 보호를 위해 false로 설정
         logging: configService.get<string>('NODE_ENV') !== 'production',
         ssl:
           configService.get<string>('DB_SSL') === 'true'
@@ -42,6 +53,7 @@ import {
     AuthModule,
     ReportsModule,
     RoomModule,
+    ChannelModule,
   ],
   controllers: [HealthController],
 })

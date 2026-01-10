@@ -35,7 +35,7 @@ export class AuthController {
    */
   @Post('login')
   @HttpCode(HttpStatus.OK)
-  async login(
+  async login(  
     @Body(ValidationPipe) loginDto: LoginDto,
   ): Promise<AuthResponseDto> {
     return this.authService.login(loginDto);
@@ -43,14 +43,14 @@ export class AuthController {
 
   /**
    * 닉네임 중복 확인
-   * GET /auth/check-nickname/:nickname
+   * GET /auth/check-nickname/:nickName
    */
-  @Get('check-nickname/:nickname')
+  @Get('check-nickname/:nickName')
   @HttpCode(HttpStatus.OK)
   async checkNickname(
-    @Param('nickname') nickname: string,
+    @Param('nickName') nickName: string,
   ): Promise<{ available: boolean }> {
-    const available = await this.authService.checkNicknameAvailability(nickname);
+    const available = await this.authService.checkNicknameAvailability(nickName);
     return { available };
   }
 }

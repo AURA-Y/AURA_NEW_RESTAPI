@@ -1,19 +1,42 @@
-import { Entity, PrimaryGeneratedColumn, Column } from 'typeorm';
+import {
+  Entity,
+  PrimaryGeneratedColumn,
+  Column,
+  OneToMany,
+  CreateDateColumn,
+  UpdateDateColumn,
+} from "typeorm";
+import { Channel } from "../../channel/entities/channel.entity";
+import { ChannelMember } from "../../channel/entities/channel-member.entity";
+import { Room } from "../../room/entities/room.entity";
 
-@Entity('user')
+@Entity("user")
 export class User {
-  @PrimaryGeneratedColumn('uuid')
+  @PrimaryGeneratedColumn("uuid")
   userId: string;
 
-  @Column({ type: 'varchar', length: 255, unique: true })
+  @Column({ type: "varchar", length: 255, unique: true })
   email: string;
 
-  @Column({ type: 'varchar', length: 255 })
+  @Column({ type: "varchar", length: 255 })
   userPassword: string;
 
-  @Column({ type: 'varchar', length: 100, unique: true })
+  @Column({ type: "varchar", length: 100, unique: true })
   nickName: string;
 
-  @Column('text', { array: true, default: [] })
-  roomReportIdxList: string[];
+  @CreateDateColumn({ type: "timestamp with time zone" })
+  createdAt: Date;
+
+  @UpdateDateColumn({ type: "timestamp with time zone" })
+  updatedAt: Date;
+
+  // 관계 설정
+  @OneToMany(() => Channel, (channel) => channel.owner)
+  ownedChannels: Channel[];
+
+  @OneToMany(() => ChannelMember, (member) => member.user)
+  memberships: ChannelMember[];
+
+  @OneToMany(() => Room, (room) => room.master)
+  createdRooms: Room[];
 }

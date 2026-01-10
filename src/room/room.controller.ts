@@ -8,19 +8,20 @@ import {
   UseGuards,
   Request,
 } from "@nestjs/common";
-import { RoomService, CreateRoomDto } from "./room.service";
+import { RoomService } from "./room.service";
+import { CreateRoomDto } from "./dto/create-room.dto";
 import { JwtAuthGuard } from "../auth/guards/jwt-auth.guard";
 
 @Controller("rooms")
 @UseGuards(JwtAuthGuard)
 export class RoomController {
-  constructor(private readonly roomService: RoomService) {}
+  constructor(private readonly roomService: RoomService) { }
 
   @Post()
   async createRoom(@Body() createRoomDto: CreateRoomDto, @Request() req) {
     return this.roomService.createRoom({
       ...createRoomDto,
-      master: req.user.id,
+      masterId: req.user.id,
     });
   }
 
@@ -39,6 +40,16 @@ export class RoomController {
     return this.roomService.getRoomByTopic(topic);
   }
 
+  @Get("channel/:channelId")
+  async getRoomsByChannel(@Param("channelId") channelId: string) {
+    return this.roomService.getRoomsByChannelId(channelId);
+  }
+
+  @Get("team/:teamId")
+  async getRoomsByTeam(@Param("teamId") teamId: string) {
+    return this.roomService.getRoomsByTeamId(teamId);
+  }
+
   @Delete(":roomId")
   async deleteRoom(@Param("roomId") roomId: string, @Request() req) {
     await this.roomService.deleteRoom(roomId, req.user.id);
@@ -55,6 +66,7 @@ export class RoomController {
   async checkUserRole(@Param("roomId") roomId: string, @Request() req) {
     return this.roomService.checkUserRole(roomId, req.user.id);
   }
+
   @Post(":roomId/leave")
   async leaveRoom(@Param("roomId") roomId: string, @Request() req) {
     await this.roomService.leaveRoom(roomId, req.user.username);

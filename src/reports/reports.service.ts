@@ -35,11 +35,13 @@ export interface FileInfo {
 
 export interface ReportDetails {
   reportId: string;
+  roomId: string;
   createdAt: string;
-  topic: string;
+  roomTopic: string;
   summary: string;
   attendees: string[];
   uploadFileList: FileInfo[];
+  channelId?: string;
 }
 
 @Injectable()
@@ -92,6 +94,19 @@ export class ReportsService {
     return `${this.uploadPrefix}${roomId}/`;
   }
 
+  private async getAccessibleReportIds(
+    userId: string,
+    nickName: string
+  ): Promise<string[]> {
+    const rooms = await this.roomRepository
+      .createQueryBuilder("room")
+      .select("room.roomId", "roomId")
+      .where("(room.masterId = :userId OR :nickName = ANY(room.attendees))", { userId, nickName })
+      .getRawMany();
+
+    return rooms.map((room) => room.roomId);
+  }
+
   async findByIds(reportIds: string[]): Promise<RoomReport[]> {
     if (!reportIds || reportIds.length === 0) {
       return [];
@@ -104,15 +119,23 @@ export class ReportsService {
   }
 
   async findAllByUserId(userId: string): Promise<RoomReport[]> {
-    const user = await this.userRepository.findOne({ where: { userId } });
-    if (
-      !user ||
-      !user.roomReportIdxList ||
-      user.roomReportIdxList.length === 0
-    ) {
+    const user = await this.userRepository.findOne({
+      where: { userId },
+      select: { userId: true, nickName: true },
+    });
+    if (!user) {
       return [];
     }
-    return this.findByIds(user.roomReportIdxList);
+
+    const reportIds = await this.getAccessibleReportIds(
+      user.userId,
+      user.nickName
+    );
+    if (reportIds.length === 0) {
+      return [];
+    }
+
+    return this.findByIds(reportIds);
   }
 
   async create(reportData: Partial<RoomReport>): Promise<RoomReport> {
@@ -262,13 +285,15 @@ export class ReportsService {
 
   // 보고서 생성: DB 메타 + S3 JSON 기록
   async createReport(payload: {
+    roomId: string;
     reportId?: string;
     userId: string;
-    topic: string;
+    roomTopic: string;
     summary?: string;
     attendees: string[];
     uploadFileList: FileInfo[];
     createdAt?: string;
+    channelId: string;
   }): Promise<ReportDetails> {
     const reportId = payload.reportId || randomUUID();
     const createdAt = payload.createdAt || new Date().toISOString();
@@ -277,19 +302,23 @@ export class ReportsService {
 
     const meta = this.reportsRepository.create({
       reportId,
+      roomId: payload.roomId,
       createdAt: new Date(createdAt),
-      topic: payload.topic,
+      topic: payload.roomTopic,
       attendees: payload.attendees,
+      channelId: payload.channelId,
     });
     await this.reportsRepository.save(meta);
 
     const details: ReportDetails = {
       reportId,
+      roomId: payload.roomId,
       createdAt,
-      topic: payload.topic,
+      roomTopic: payload.roomTopic,
       summary,
       attendees: payload.attendees,
       uploadFileList: payload.uploadFileList || [],
+      channelId: payload.channelId,
     };
     await this.saveReportDetailsToS3(details);
 
@@ -301,11 +330,10 @@ export class ReportsService {
       "AWS_REGION",
       "ap-northeast-2"
     );
-    const markdownUrl = `https://${
-      this.bucketName
-    }.s3.${region}.amazonaws.com/${this.getReportMarkdownKey(
-      details.reportId
-    )}`;
+    const markdownUrl = `https://${this.bucketName
+      }.s3.${region}.amazonaws.com/${this.getReportMarkdownKey(
+        details.reportId
+      )}`;
 
     // 1. report.json 저장 (summary에 마크다운 파일 URL 저장, 실제 파일은 생성하지 않음)
     const jsonPayload = {
@@ -337,7 +365,7 @@ export class ReportsService {
     await this.reportsRepository.update(
       { reportId },
       {
-        topic: updated.topic,
+        topic: updated.roomTopic,
         attendees: updated.attendees,
         createdAt: new Date(updated.createdAt),
       }
@@ -385,15 +413,54 @@ export class ReportsService {
   }
 
   async attachReportToUser(userId: string, reportId: string) {
-    const user = await this.userRepository.findOne({ where: { userId } });
+    const user = await this.userRepository.findOne({
+      where: { userId },
+      select: { userId: true, nickName: true },
+    });
     if (!user) {
       throw new NotFoundException(`User not found: ${userId}`);
     }
-    const current = new Set(user.roomReportIdxList || []);
-    current.add(reportId);
-    user.roomReportIdxList = Array.from(current);
-    await this.userRepository.save(user);
-    return user.roomReportIdxList;
+
+    // reportId는 실제로 roomId - room 테이블에서 확인
+    let room = await this.roomRepository.findOne({
+      where: { roomId: reportId },
+    });
+
+    // room이 없으면 오류
+    if (!room) {
+      throw new NotFoundException(`Room not found: ${reportId}`);
+    } else {
+      // 기존 room이 있으면 권한 확인
+      const isMaster = room.masterId === userId;
+      const isAttendee = room.attendees.includes(user.nickName);
+
+      if (!isMaster && !isAttendee) {
+        throw new ForbiddenException("Not allowed to access this report");
+      }
+
+      // attendees에 없으면 추가
+      if (!isAttendee && !isMaster) {
+        room.attendees.push(user.nickName);
+        await this.roomRepository.save(room);
+        this.logger.log(`Added ${user.nickName} to room ${reportId}`);
+      }
+    }
+
+    // report가 없으면 자동 생성
+    let report = await this.reportsRepository.findOne({
+      where: { reportId },
+    });
+
+    if (!report) {
+      throw new NotFoundException(`Report not found: ${reportId}`);
+    }
+
+    const reportIds = await this.getAccessibleReportIds(
+      user.userId,
+      user.nickName
+    );
+
+    return reportIds;
   }
 
   async getReportDetailsFromS3(roomId: string): Promise<any> {
@@ -537,29 +604,31 @@ export class ReportsService {
   }
 
   async deleteReport(roomId: string, userId: string) {
-    const user = await this.userRepository.findOne({ where: { userId } });
+    const user = await this.userRepository.findOne({
+      where: { userId },
+      select: { userId: true, nickName: true },
+    });
     if (!user) {
       throw new NotFoundException(`User not found: ${userId}`);
     }
-    if (!user.roomReportIdxList?.includes(roomId)) {
+
+    const reportIds = await this.getAccessibleReportIds(
+      user.userId,
+      user.nickName
+    );
+    if (!reportIds.includes(roomId)) {
       throw new ForbiddenException("Not allowed to delete this report");
     }
 
-    // S3 폴더 전체 삭제 (roomId/ 폴더의 모든 파일 + report.json + report.md)
+    // S3 ??? ??? ??? (roomId/ ???????? ??? + report.json + report.md)
     try {
       await this.deleteS3Folder(roomId);
     } catch (error) {
       this.logger.warn(`Failed to delete S3 folder for ${roomId}: ${error}`);
     }
 
-    // DB 메타 삭제
+    // DB ??? ???
     await this.reportsRepository.delete({ reportId: roomId });
-
-    // 사용자 목록에서 제거
-    user.roomReportIdxList = (user.roomReportIdxList || []).filter(
-      (id) => id !== roomId
-    );
-    await this.userRepository.save(user);
 
     return { deleted: true };
   }

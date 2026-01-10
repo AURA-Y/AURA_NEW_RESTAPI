@@ -4,54 +4,71 @@ import {
   Column,
   CreateDateColumn,
   ManyToOne,
+  OneToOne,
+  OneToMany,
   JoinColumn,
 } from "typeorm";
 import { User } from "../../auth/entities/user.entity";
-
-export interface UploadFileItem {
-  fileId: string;
-  fileName: string;
-  fileUrl: string;
-  fileSize: number;
-  fileType: string;
-}
+import { Channel } from "../../channel/entities/channel.entity";
+import { Team } from "../../channel/entities/team.entity";
+import { RoomReport } from "./room-report.entity";
+import { File } from "./file.entity";
 
 @Entity("room")
 export class Room {
   @PrimaryColumn({ type: "varchar", length: 255 })
-  roomId: string;
+  roomId: string; // LiveKit roomId (UUID 형식 권장)
+
+  @Column({ type: "varchar", length: 255, nullable: false })
+  roomTopic: string; // 방 제목 (표시용)
+
+  @Column({ type: "text", nullable: true })
+  roomDescription: string | null;
+
+  @Column({ type: "varchar", length: 50, nullable: true })
+  roomPassword: string | null;
+
+  @Column({ type: "varchar", length: 255, unique: true })
+  roomShareLink: string; // 공유 링크
 
   @CreateDateColumn({ type: "timestamp with time zone" })
   createdAt: Date;
 
-  @Column({ type: "varchar", length: 500 })
-  topic: string;
+  // 방장 정보 (nullable: 기존 레코드 마이그레이션 지원)
+  @Column({ type: "uuid", nullable: false })
+  masterId: string;
 
-  @Column({ type: "varchar", length: 1000, nullable: true })
-  description: string;
+  @ManyToOne(() => User, (user) => user.createdRooms, { onDelete: "CASCADE" })
+  @JoinColumn({ name: "masterId" })
+  master: User;
 
-  @Column({ type: "jsonb", default: [] })
-  upload_File_list: UploadFileItem[];
+  // 채널 소속 (선택 - 자동 생성 시 null 가능)
+  @Column({ type: "uuid", nullable: false })
+  channelId: string;
 
+  @ManyToOne(() => Channel, (channel) => channel.rooms, { onDelete: "CASCADE" })
+  @JoinColumn({ name: "channelId" })
+  channel: Channel | null;
+
+  // 팀 소속 (선택)
+  @Column({ type: "uuid", nullable: true })
+  teamId: string | null;
+
+  @ManyToOne(() => Team, (team) => team.rooms, { onDelete: "SET NULL" })
+  @JoinColumn({ name: "teamId" })
+  team: Team | null;
+
+  // 회의 데이터
   @Column("text", { array: true, default: [] })
-  attendees: string[];
-
-  @Column({ type: "integer", default: 20 })
-  maxParticipants: number;
+  attendees: string[]; // 참석자 닉네임 배열
 
   @Column({ type: "text", nullable: true })
-  token: string;
+  token: string | null; // 미디어 서버 접속용 토큰
 
-  @Column({ type: "varchar", length: 500, nullable: true })
-  livekitUrl: string;
+  // 파일 및 리포트
+  @OneToMany(() => File, (file) => file.room)
+  files: File[];
 
-  @Column({ type: "uuid" })
-  master: string;
-
-  @Column({ type: "varchar", length: 255, nullable: true })
-  reportId: string;
-
-  @ManyToOne(() => User)
-  @JoinColumn({ name: "master" })
-  masterUser: User;
+  @OneToOne(() => RoomReport, (report) => report.room)
+  report: RoomReport | null;
 }
