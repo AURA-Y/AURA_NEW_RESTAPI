@@ -620,15 +620,15 @@ export class ReportsService {
       throw new ForbiddenException("Not allowed to delete this report");
     }
 
-    // S3 ??? ??? ??? (roomId/ ???????? ??? + report.json + report.md)
+    // S3 폴더 삭제 (roomId/ 폴더 전체 삭제 + report.json + report.md)
     try {
       await this.deleteS3Folder(roomId);
     } catch (error) {
       this.logger.warn(`Failed to delete S3 folder for ${roomId}: ${error}`);
     }
 
-    // DB ??? ???
-    await this.reportsRepository.delete({ reportId: roomId });
+    // DB 레코드 삭제 (roomId 컬럼으로 삭제)
+    await this.reportsRepository.delete({ roomId });
 
     return { deleted: true };
   }
