@@ -9,11 +9,11 @@ export class RegisterDto {
   @IsNotEmpty()
   @MinLength(6)
   @MaxLength(100)
-  userPassword: string;
+  password: string;
 
   @IsString()
   @IsNotEmpty()
   @MinLength(2)
   @MaxLength(50)
-  nickName: string;
+  nickname: string;
 }

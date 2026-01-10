@@ -9,6 +9,8 @@ import {
 } from "typeorm";
 import { Channel } from "./channel.entity";
 import { ChannelMember } from "./channel-member.entity";
+import { Room } from "../../room/entities/room.entity";
+import { RoomReport } from "../../room/entities/room-report.entity";
 
 @Entity("team")
 export class Team {
@@ -30,4 +32,10 @@ export class Team {
 
   @OneToMany(() => ChannelMember, (member) => member.team)
   members: ChannelMember[];
+
+  @OneToMany(() => Room, (room) => room.team)
+  rooms: Room[];
+
+  @OneToMany(() => RoomReport, (report) => report.team)
+  reports: RoomReport[];
 }

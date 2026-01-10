@@ -99,7 +99,7 @@ export class ReportsService {
     const rooms = await this.roomRepository
       .createQueryBuilder("room")
       .select("room.roomId", "roomId")
-      .where("(room.master = :userId OR :nickName = ANY(room.attendees))", { userId, nickName })
+      .where("(room.masterId = :userId OR :nickName = ANY(room.attendees))", { userId, nickName })
       .getRawMany();
 
     return rooms.map((room) => room.roomId);
@@ -422,20 +422,24 @@ export class ReportsService {
     // room이 없으면 자동 생성 (LiveKit에서 먼저 생성된 경우)
     if (!room) {
       this.logger.log(`Room not found in DB, creating: ${reportId}`);
+      // roomId에서 고유 부분 추출하여 shareLink 생성
+      const parts = reportId.split("-");
+      const shortId = parts.length >= 3 ? parts[2] : reportId.slice(-8);
       room = this.roomRepository.create({
         roomId: reportId,
         topic: `Meeting ${reportId.substring(0, 8)}`,
         description: 'Auto-created room',
-        master: userId,
+        masterId: userId,
+        channelId: null,  // 자동 생성 시 채널 미지정
+        shareLink: `aura.ai.kr/join/${shortId}`,
         attendees: [user.nickName],
-        maxParticipants: 20,
         createdAt: new Date(),
       });
       await this.roomRepository.save(room);
       this.logger.log(`Room created: ${reportId} by ${user.nickName}`);
     } else {
       // 기존 room이 있으면 권한 확인
-      const isMaster = room.master === userId;
+      const isMaster = room.masterId === userId;
       const isAttendee = room.attendees.includes(user.nickName);
 
       if (!isMaster && !isAttendee) {

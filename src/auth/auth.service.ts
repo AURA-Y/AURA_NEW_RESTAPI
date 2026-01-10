@@ -27,7 +27,7 @@ export class AuthService {
    * 회원가입
    */
   async register(registerDto: RegisterDto): Promise<AuthResponseDto> {
-    const { email, userPassword, nickName } = registerDto;
+    const { email, password, nickname } = registerDto;
 
     // 이메일 중복 확인
     const existingEmail = await this.userRepository.findOne({
@@ -40,7 +40,7 @@ export class AuthService {
 
     // 닉네임 중복 확인
     const existingNickname = await this.userRepository.findOne({
-      where: { nickName },
+      where: { nickName: nickname },
     });
 
     if (existingNickname) {
@@ -48,18 +48,18 @@ export class AuthService {
     }
 
     // 비밀번호 해싱
-    const hashedPassword = await bcrypt.hash(userPassword, 10);
+    const hashedPassword = await bcrypt.hash(password, 10);
 
     // 사용자 생성
     const user = this.userRepository.create({
       email,
-      nickName,
+      nickName: nickname,
       userPassword: hashedPassword,
     });
 
     await this.userRepository.save(user);
 
-    this.logger.log(`New user registered: ${nickName} (${email})`);
+    this.logger.log(`New user registered: ${nickname} (${email})`);
 
     // JWT 토큰 생성
     const accessToken = this.generateToken(user);
@@ -70,7 +70,6 @@ export class AuthService {
       email: user.email,
       nickName: user.nickName,
       nickname: user.nickName,
-      roomReportIdxList: user.roomReportIdxList || [],
       createdAt: user.createdAt,
       updatedAt: user.updatedAt,
     });
@@ -80,7 +79,7 @@ export class AuthService {
    * 로그인
    */
   async login(loginDto: LoginDto): Promise<AuthResponseDto> {
-    const { email, userPassword } = loginDto;
+    const { email, password } = loginDto;
 
     // 사용자 조회 (이메일로 찾기)
     const user = await this.userRepository.findOne({
@@ -90,7 +89,6 @@ export class AuthService {
         email: true,
         nickName: true,
         userPassword: true,
-        roomReportIdxList: true,
         createdAt: true,
         updatedAt: true,
       },
@@ -101,7 +99,7 @@ export class AuthService {
     }
 
     // 비밀번호 확인
-    const isPasswordValid = await bcrypt.compare(userPassword, user.userPassword);
+    const isPasswordValid = await bcrypt.compare(password, user.userPassword);
 
     if (!isPasswordValid) {
       throw new UnauthorizedException('Invalid credentials');
@@ -118,7 +116,6 @@ export class AuthService {
       email: user.email,
       nickName: user.nickName,
       nickname: user.nickName,
-      roomReportIdxList: user.roomReportIdxList || [],
       createdAt: user.createdAt,
       updatedAt: user.updatedAt,
     });

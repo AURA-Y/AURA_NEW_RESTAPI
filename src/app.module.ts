@@ -13,6 +13,7 @@ import { HealthController } from './health/health.controller';
 import {
   Room,
   RoomReport,
+  File,
 } from './room/entities';
 
 
@@ -38,6 +39,7 @@ import {
           Team,
           Room,
           RoomReport,
+          File,
         ],
         // synchronize: configService.get<string>('NODE_ENV') !== 'production',
         synchronize: false, // 원격 DB 사용 시 스키마 보호를 위해 false로 설정
