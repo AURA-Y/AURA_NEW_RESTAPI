@@ -36,12 +36,13 @@ export interface FileInfo {
 export interface ReportDetails {
   reportId: string;
   roomId: string;
-  createdAt: string;
-  roomTopic: string;
-  summary: string;
+  channelId: string;
+  topic: string;
+  description?: string;
   attendees: string[];
+  createdAt: string;
+  shareScope: "CHANNEL" | "PRIVATE";
   uploadFileList: FileInfo[];
-  channelId?: string;
 }
 
 @Injectable()
@@ -288,8 +289,8 @@ export class ReportsService {
     roomId: string;
     reportId?: string;
     userId: string;
-    roomTopic: string;
-    summary?: string;
+    topic: string;
+    description?: string;
     attendees: string[];
     uploadFileList: FileInfo[];
     createdAt?: string;
@@ -297,14 +298,12 @@ export class ReportsService {
   }): Promise<ReportDetails> {
     const reportId = payload.reportId || randomUUID();
     const createdAt = payload.createdAt || new Date().toISOString();
-    const summary =
-      payload.summary || "회의 요약: 회의 종료 시점에 자동 생성됩니다.";
 
     const meta = this.reportsRepository.create({
       reportId,
       roomId: payload.roomId,
       createdAt: new Date(createdAt),
-      topic: payload.roomTopic,
+      topic: payload.topic,
       attendees: payload.attendees,
       channelId: payload.channelId,
     });
@@ -313,12 +312,13 @@ export class ReportsService {
     const details: ReportDetails = {
       reportId,
       roomId: payload.roomId,
-      createdAt,
-      roomTopic: payload.roomTopic,
-      summary,
-      attendees: payload.attendees,
-      uploadFileList: payload.uploadFileList || [],
       channelId: payload.channelId,
+      topic: payload.topic,
+      description: payload.description,
+      attendees: payload.attendees,
+      createdAt,
+      shareScope: "CHANNEL",
+      uploadFileList: payload.uploadFileList || [],
     };
     await this.saveReportDetailsToS3(details);
 
@@ -335,10 +335,10 @@ export class ReportsService {
         details.reportId
       )}`;
 
-    // 1. report.json 저장 (summary에 마크다운 파일 URL 저장, 실제 파일은 생성하지 않음)
+    // 1. report.json 저장 (summaryUrl에 마크다운 파일 URL 저장)
     const jsonPayload = {
       ...details,
-      summary: markdownUrl, // 마크다운 파일 경로 저장 (파일은 나중에 생성될 수 있음)
+      summaryUrl: markdownUrl, // 마크다운 파일 경로 저장 (파일은 나중에 생성될 수 있음)
     };
     const jsonKey = `${this.uploadPrefix}${details.reportId}/report.json`;
     await this.s3Client.send(
@@ -365,7 +365,7 @@ export class ReportsService {
     await this.reportsRepository.update(
       { reportId },
       {
-        topic: updated.roomTopic,
+        topic: updated.topic,
         attendees: updated.attendees,
         createdAt: new Date(updated.createdAt),
       }
@@ -377,7 +377,7 @@ export class ReportsService {
     reportId: string,
     summary: string,
     roomId?: string
-  ): Promise<ReportDetails> {
+  ): Promise<{ success: boolean; summaryUrl: string }> {
     const current = await this.getReportDetailsFromS3(reportId);
 
     // roomId가 제공되면 room에서 attendees 가져오기 (이미 nickname으로 저장됨)
@@ -397,19 +397,31 @@ export class ReportsService {
       }
     }
 
-    const updated: ReportDetails = {
-      ...current,
-      summary,
-      attendees,
-    };
+    // report.md 파일에 summary 저장
+    const mdKey = this.getReportMarkdownKey(reportId);
+    await this.s3Client.send(
+      new PutObjectCommand({
+        Bucket: this.bucketName,
+        Key: mdKey,
+        Body: summary,
+        ContentType: "text/markdown; charset=utf-8",
+      })
+    );
 
-    // S3 JSON 업데이트
-    await this.saveReportDetailsToS3(updated);
+    // attendees가 변경되었으면 report.json과 DB 업데이트
+    if (attendees.length > 0) {
+      const updated: ReportDetails = {
+        ...current,
+        attendees,
+      };
+      await this.saveReportDetailsToS3(updated);
+      await this.reportsRepository.update({ reportId }, { attendees });
+    }
 
-    // PostgreSQL room_report 테이블도 업데이트
-    await this.reportsRepository.update({ reportId }, { attendees });
+    const region = this.configService.get<string>("AWS_REGION", "ap-northeast-2");
+    const summaryUrl = `https://${this.bucketName}.s3.${region}.amazonaws.com/${mdKey}`;
 
-    return updated;
+    return { success: true, summaryUrl };
   }
 
   async attachReportToUser(userId: string, reportId: string) {
@@ -463,7 +475,7 @@ export class ReportsService {
     return reportIds;
   }
 
-  async getReportDetailsFromS3(roomId: string): Promise<any> {
+  async getReportDetailsFromS3(roomId: string): Promise<ReportDetails & { summary?: string }> {
     const tryKeys = this.getReportJsonKeys(roomId);
 
     for (const key of tryKeys) {
@@ -477,8 +489,8 @@ export class ReportsService {
         const bodyContents = await response.Body.transformToString();
         const parsed = JSON.parse(bodyContents);
 
-        // summary가 report.md URL이면 내용 읽어오기 시도
-        if (parsed.summary && parsed.summary.endsWith("report.md")) {
+        // summaryUrl이 있으면 마크다운 파일 내용 읽어오기 시도
+        if (parsed.summaryUrl && parsed.summaryUrl.endsWith("report.md")) {
           try {
             const mdKey = this.getReportMarkdownKey(roomId);
             const mdCommand = new GetObjectCommand({
@@ -486,16 +498,20 @@ export class ReportsService {
               Key: mdKey,
             });
             const mdResponse = await this.s3Client.send(mdCommand);
-            // summary 필드를 마크다운 내용으로 교체
+            // summary 필드에 마크다운 내용 추가
             parsed.summary = await mdResponse.Body.transformToString();
           } catch (mdErr) {
             this.logger.warn(
               `Markdown file not found for ${roomId}: ${mdErr.message}`
             );
-            // 파일이 없으면 안내 메시지
-            parsed.summary =
-              "(회의록 md파일 생성 - 추후 예정) 파일이 없습니다.";
+            // 파일이 없으면 summary는 undefined로 유지
+            parsed.summary = undefined;
           }
+        }
+
+        // shareScope 기본값 설정
+        if (!parsed.shareScope) {
+          parsed.shareScope = "CHANNEL";
         }
 
         return parsed;
