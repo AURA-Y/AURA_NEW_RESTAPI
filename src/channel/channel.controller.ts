@@ -35,6 +35,15 @@ export class ChannelController {
   }
 
   /**
+   * GET /channels/my-pending-requests - 내가 보낸 대기 중인 가입 요청 목록
+   * 주의: :channelId 라우트보다 먼저 정의해야 함
+   */
+  @Get('my-pending-requests')
+  async getMyPendingJoinRequests(@Request() req) {
+    return this.channelService.getMyPendingJoinRequests(req.user.id);
+  }
+
+  /**
    * GET /channels/:channelId - 특정 채널 상세 조회
    */
   @Get(':channelId')

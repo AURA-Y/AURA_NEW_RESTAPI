@@ -470,4 +470,14 @@ export class ChannelService {
 
     return { success: true, message: 'Join request rejected' };
   }
+
+  /**
+   * 내가 보낸 대기 중인 가입 요청 목록 조회
+   */
+  async getMyPendingJoinRequests(userId: string) {
+    return this.joinRequestRepository.find({
+      where: { userId, status: JoinRequestStatus.PENDING },
+      select: ['id', 'channelId', 'createdAt'],
+    });
+  }
 }
