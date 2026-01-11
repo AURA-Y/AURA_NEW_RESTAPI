@@ -101,4 +101,50 @@ export class ChannelController {
   ): Promise<boolean> {
     return this.channelService.removeMember(channelId, targetUserId, req.user.id);
   }
+
+  // ==================== Join Request Endpoints ====================
+
+  /**
+   * POST /channels/:channelId/join-request - 가입 요청 생성
+   */
+  @Post(':channelId/join-request')
+  async createJoinRequest(
+    @Param('channelId') channelId: string,
+    @Request() req
+  ) {
+    return this.channelService.createJoinRequest(channelId, req.user.id);
+  }
+
+  /**
+   * GET /channels/:channelId/join-requests - 채널의 가입 요청 목록 조회 (Owner만)
+   */
+  @Get(':channelId/join-requests')
+  async getJoinRequests(
+    @Param('channelId') channelId: string,
+    @Request() req
+  ) {
+    return this.channelService.getJoinRequests(channelId, req.user.id);
+  }
+
+  /**
+   * PATCH /channels/join-requests/:requestId/approve - 가입 요청 승인
+   */
+  @Patch('join-requests/:requestId/approve')
+  async approveJoinRequest(
+    @Param('requestId') requestId: string,
+    @Request() req
+  ) {
+    return this.channelService.approveJoinRequest(requestId, req.user.id);
+  }
+
+  /**
+   * PATCH /channels/join-requests/:requestId/reject - 가입 요청 거절
+   */
+  @Patch('join-requests/:requestId/reject')
+  async rejectJoinRequest(
+    @Param('requestId') requestId: string,
+    @Request() req
+  ) {
+    return this.channelService.rejectJoinRequest(requestId, req.user.id);
+  }
 }
