@@ -1,10 +1,10 @@
 import {
   Entity,
   Column,
-  CreateDateColumn,
   ManyToOne,
   PrimaryColumn,
   JoinColumn,
+  BeforeInsert,
 } from "typeorm";
 import { User } from "../../auth/entities/user.entity";
 import { Channel } from "./channel.entity";
@@ -16,7 +16,7 @@ export enum ChannelRole {
   MEMBER = "MEMBER",
 }
 
-@Entity("channel_member")
+@Entity("ChannelMember")
 export class ChannelMember {
   @PrimaryColumn({ type: "uuid" })
   userId: string;
@@ -30,8 +30,15 @@ export class ChannelMember {
   @Column({ type: "enum", enum: ChannelRole, default: ChannelRole.MEMBER })
   role: ChannelRole;
 
-  @CreateDateColumn({ type: "timestamp with time zone" })
+  @Column({ type: "timestamp with time zone" })
   joinedAt: Date;
+
+  @BeforeInsert()
+  setDefaults() {
+    if (!this.joinedAt) {
+      this.joinedAt = new Date();
+    }
+  }
 
   @ManyToOne(() => User, (user) => user.memberships, { onDelete: "CASCADE" })
   @JoinColumn({ name: "userId" })

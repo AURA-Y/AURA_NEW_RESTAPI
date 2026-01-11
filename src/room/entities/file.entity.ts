@@ -1,16 +1,17 @@
 import {
   Entity,
-  PrimaryGeneratedColumn,
+  PrimaryColumn,
   Column,
-  CreateDateColumn,
   ManyToOne,
   JoinColumn,
+  BeforeInsert,
 } from "typeorm";
 import { Room } from "./room.entity";
+import { v4 as uuidv4 } from "uuid";
 
-@Entity("file")
+@Entity("File")
 export class File {
-  @PrimaryGeneratedColumn("uuid")
+  @PrimaryColumn({ type: "uuid" })
   fileId: string;
 
   @Column({ type: "varchar", length: 255 })
@@ -22,11 +23,21 @@ export class File {
   @Column({ type: "integer" })
   fileSize: number;
 
-  @CreateDateColumn({ type: "timestamp with time zone" })
+  @Column({ type: "timestamp with time zone" })
   createdAt: Date;
 
   @Column({ type: "varchar", length: 255 })
   roomId: string;
+
+  @BeforeInsert()
+  setDefaults() {
+    if (!this.fileId) {
+      this.fileId = uuidv4();
+    }
+    if (!this.createdAt) {
+      this.createdAt = new Date();
+    }
+  }
 
   @ManyToOne(() => Room, (room) => room.files, { onDelete: "CASCADE" })
   @JoinColumn({ name: "roomId" })
