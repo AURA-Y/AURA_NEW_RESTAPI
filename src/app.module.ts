@@ -5,6 +5,7 @@ import { AuthModule } from './auth/auth.module';
 import { ReportsModule } from './reports/reports.module';
 import { RoomModule } from './room/room.module';
 import { ChannelModule } from './channel/channel.module';
+import { SseModule } from './sse/sse.module';
 import { User } from './auth/entities/user.entity';
 import { Channel } from './channel/entities/channel.entity';
 import { ChannelMember } from './channel/entities/channel-member.entity';
@@ -54,6 +55,7 @@ import {
     ReportsModule,
     RoomModule,
     ChannelModule,
+    SseModule,
   ],
   controllers: [HealthController],
 })
