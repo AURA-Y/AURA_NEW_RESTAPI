@@ -77,6 +77,27 @@ export class ChannelService {
   }
 
   /**
+   * 모든 채널 목록 조회 (채널 검색용 - 메타데이터만)
+   */
+  async getAllChannels() {
+    const channels = await this.channelRepository
+      .createQueryBuilder('channel')
+      .leftJoinAndSelect('channel.owner', 'owner')
+      .select([
+        'channel.channelId',
+        'channel.channelName',
+        'channel.createdAt',
+        'owner.userId',
+        'owner.nickName',
+        'owner.email',
+      ])
+      .orderBy('channel.createdAt', 'DESC')
+      .getMany();
+
+    return channels;
+  }
+
+  /**
    * 특정 채널 상세 조회
    */
   async getChannelById(channelId: string, userId: string) {

@@ -26,6 +26,15 @@ export class ChannelController {
   }
 
   /**
+   * GET /channels - 모든 채널 목록 조회 (채널 검색용)
+   * 채널 메타데이터만 반환 (channelId, channelName, createdAt, owner 정보)
+   */
+  @Get()
+  async getAllChannels() {
+    return this.channelService.getAllChannels();
+  }
+
+  /**
    * GET /channels/:channelId - 특정 채널 상세 조회
    */
   @Get(':channelId')
