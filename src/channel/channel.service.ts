@@ -213,4 +213,89 @@ export class ChannelService {
       relations: ['user'],
     });
   }
+
+  /**
+   * 멤버 권한 변경 (채널 소유자만 가능)
+   * @returns boolean - 성공 여부
+   */
+  async updateMemberRole(
+    channelId: string,
+    targetUserId: string,
+    requestUserId: string,
+    role: string
+  ): Promise<boolean> {
+    // 채널 존재 확인
+    const channel = await this.channelRepository.findOne({
+      where: { channelId },
+    });
+
+    if (!channel) {
+      throw new NotFoundException('Channel not found');
+    }
+
+    // 요청자가 OWNER인지 확인 (권한 변경은 Owner만 가능)
+    if (channel.ownerId !== requestUserId) {
+      throw new ForbiddenException('Only channel owner can change member roles');
+    }
+
+    // 대상 멤버 조회
+    const targetMember = await this.channelMemberRepository.findOne({
+      where: {
+        channelId,
+        userId: targetUserId,
+      }
+    });
+
+    if (!targetMember) {
+      throw new NotFoundException('Member not found in this channel');
+    }
+
+    // Owner 권한은 변경 불가
+    if (targetMember.role === ChannelRole.OWNER) {
+      throw new ForbiddenException('Cannot change owner role');
+    }
+
+    // 권한 업데이트
+    targetMember.role = role as ChannelRole;
+    await this.channelMemberRepository.save(targetMember);
+
+    return true;
+  }
+
+  /**
+   * 채널에서 멤버 제거 (채널 소유자만 가능)
+   * @returns boolean - 성공 여부
+   */
+  async removeMember(
+    channelId: string,
+    targetUserId: string,
+    requestUserId: string
+  ): Promise<boolean> {
+    // 채널 존재 확인
+    const channel = await this.channelRepository.findOne({
+      where: { channelId },
+    });
+
+    if (!channel) {
+      throw new NotFoundException('Channel not found');
+    }
+
+    // 요청자가 OWNER인지 확인
+    if (channel.ownerId !== requestUserId) {
+      throw new ForbiddenException('Only channel owner can remove members');
+    }
+
+    // Owner 본인은 제거 불가
+    if (channel.ownerId === targetUserId) {
+      throw new ForbiddenException('Cannot remove channel owner');
+    }
+
+    // 멤버 삭제
+    const result = await this.channelMemberRepository.delete({
+      channelId,
+      userId: targetUserId,
+    });
+
+    return result.affected !== undefined && result.affected > 0;
+  }
 }

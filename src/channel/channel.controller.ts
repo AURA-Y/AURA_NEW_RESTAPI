@@ -1,4 +1,4 @@
-import { Controller, Get, Post, Put, Delete, Body, Param, UseGuards, Request } from '@nestjs/common';
+import { Controller, Get, Post, Put, Patch, Delete, Body, Param, UseGuards, Request } from '@nestjs/common';
 import { ChannelService } from './channel.service';
 import { CreateChannelDto } from './dto/create-channel.dto';
 import { UpdateChannelDto } from './dto/update-channel.dto';
@@ -64,5 +64,32 @@ export class ChannelController {
     @Request() req
   ) {
     return this.channelService.addMember(channelId, targetUserId, req.user.id, role);
+  }
+
+  /**
+   * PATCH /channels/:channelId/members/:userId/role - 멤버 권한 변경
+   * @returns boolean - 성공 여부
+   */
+  @Patch(':channelId/members/:userId/role')
+  async updateMemberRole(
+    @Param('channelId') channelId: string,
+    @Param('userId') targetUserId: string,
+    @Body('role') role: string,
+    @Request() req
+  ): Promise<boolean> {
+    return this.channelService.updateMemberRole(channelId, targetUserId, req.user.id, role);
+  }
+
+  /**
+   * DELETE /channels/:channelId/members/:userId - 채널에서 멤버 제거
+   * @returns boolean - 성공 여부
+   */
+  @Delete(':channelId/members/:userId')
+  async removeMember(
+    @Param('channelId') channelId: string,
+    @Param('userId') targetUserId: string,
+    @Request() req
+  ): Promise<boolean> {
+    return this.channelService.removeMember(channelId, targetUserId, req.user.id);
   }
 }
