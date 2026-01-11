@@ -113,9 +113,21 @@ export class ReportsService {
       return [];
     }
 
+    // reportId = roomId 이므로 roomId로 검색
     return this.reportsRepository.find({
-      where: { reportId: In(reportIds) },
+      where: { roomId: In(reportIds) },
       order: { createdAt: "DESC" },
+    });
+  }
+
+  /**
+   * 단일 리포트 조회 (DB)
+   * @param reportId - 리포트 ID (= roomId)
+   * @returns RoomReport 엔티티 또는 null
+   */
+  async findById(reportId: string): Promise<RoomReport | null> {
+    return this.reportsRepository.findOne({
+      where: { roomId: reportId },
     });
   }
 
@@ -296,16 +308,18 @@ export class ReportsService {
     createdAt?: string;
     channelId: string;
   }): Promise<ReportDetails> {
-    const reportId = payload.reportId || randomUUID();
+    // reportId는 roomId와 동일하게 사용 (엔티티 설계 원칙)
+    const reportId = payload.reportId || payload.roomId;
     const createdAt = payload.createdAt || new Date().toISOString();
 
     const meta = this.reportsRepository.create({
       reportId,
       roomId: payload.roomId,
-      createdAt: new Date(createdAt),
-      topic: payload.topic,
-      attendees: payload.attendees,
       channelId: payload.channelId,
+      topic: payload.topic,
+      description: payload.description || null,
+      attendees: payload.attendees,
+      createdAt: new Date(createdAt),
     });
     await this.reportsRepository.save(meta);
 

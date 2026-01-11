@@ -13,6 +13,7 @@ import {
   Res,
   StreamableFile,
   UseInterceptors,
+  NotFoundException,
 } from "@nestjs/common";
 import { Response, Request } from "express";
 import { ReportsService } from "./reports.service";
@@ -216,5 +217,16 @@ export class ReportsController {
   @UseGuards(JwtAuthGuard)
   async getReportDetails(@Param("id") id: string): Promise<any> {
     return this.reportsService.getReportDetailsFromS3(id);
+  }
+
+  // 단일 리포트 조회 (DB)
+  @Get(":id")
+  @UseGuards(JwtAuthGuard)
+  async getReportById(@Param("id") id: string): Promise<RoomReport> {
+    const report = await this.reportsService.findById(id);
+    if (!report) {
+      throw new NotFoundException(`Report not found: ${id}`);
+    }
+    return report;
   }
 }
