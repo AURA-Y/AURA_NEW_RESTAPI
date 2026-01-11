@@ -2,12 +2,10 @@ import {
   Entity,
   PrimaryColumn,
   Column,
-  OneToOne,
   ManyToOne,
   JoinColumn,
   BeforeInsert,
 } from "typeorm";
-import { Room } from "./room.entity";
 import { Channel } from "../../channel/entities/channel.entity";
 import { Team } from "../../channel/entities/team.entity";
 
@@ -45,6 +43,7 @@ export class RoomReport {
   @Column("uuid", { array: true, default: [] })
   specialAuth: string[];
 
+  // roomId는 FK 없이 단순 문자열로 저장 (Room 삭제 시 Report 유지)
   @Column({ type: "varchar", length: 255, unique: true })
   roomId: string;
 
@@ -67,9 +66,7 @@ export class RoomReport {
     }
   }
 
-  @OneToOne(() => Room, (room) => room.report, { onDelete: "CASCADE" })
-  @JoinColumn({ name: "roomId" })
-  room: Room;
+  // Room과의 FK 관계 제거됨 - Room 삭제해도 Report는 유지됨
 
   @ManyToOne(() => Channel, (channel) => channel.reports, { onDelete: "CASCADE" })
   @JoinColumn({ name: "channelId" })

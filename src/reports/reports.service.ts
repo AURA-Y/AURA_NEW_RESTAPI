@@ -99,13 +99,14 @@ export class ReportsService {
     userId: string,
     nickName: string
   ): Promise<string[]> {
-    const rooms = await this.roomRepository
-      .createQueryBuilder("room")
-      .select("room.roomId", "roomId")
-      .where("(room.masterId = :userId OR :nickName = ANY(room.attendees))", { userId, nickName })
+    // RoomReport에서 직접 조회 (attendees에 포함된 경우)
+    const reports = await this.reportsRepository
+      .createQueryBuilder("report")
+      .select("report.reportId", "reportId")
+      .where(":nickName = ANY(report.attendees)", { nickName })
       .getRawMany();
 
-    return rooms.map((room) => room.roomId);
+    return reports.map((report) => report.reportId);
   }
 
   async findByIds(reportIds: string[]): Promise<RoomReport[]> {
@@ -113,21 +114,21 @@ export class ReportsService {
       return [];
     }
 
-    // reportId = roomId 이므로 roomId로 검색
+    // reportId로 검색
     return this.reportsRepository.find({
-      where: { roomId: In(reportIds) },
+      where: { reportId: In(reportIds) },
       order: { createdAt: "DESC" },
     });
   }
 
   /**
    * 단일 리포트 조회 (DB)
-   * @param reportId - 리포트 ID (= roomId)
+   * @param reportId - 리포트 ID
    * @returns RoomReport 엔티티 또는 null
    */
   async findById(reportId: string): Promise<RoomReport | null> {
     return this.reportsRepository.findOne({
-      where: { roomId: reportId },
+      where: { reportId },
     });
   }
 
@@ -633,7 +634,7 @@ export class ReportsService {
     }
   }
 
-  async deleteReport(roomId: string, userId: string) {
+  async deleteReport(reportId: string, userId: string) {
     const user = await this.userRepository.findOne({
       where: { userId },
       select: { userId: true, nickName: true },
@@ -646,19 +647,19 @@ export class ReportsService {
       user.userId,
       user.nickName
     );
-    if (!reportIds.includes(roomId)) {
+    if (!reportIds.includes(reportId)) {
       throw new ForbiddenException("Not allowed to delete this report");
     }
 
-    // S3 폴더 삭제 (roomId/ 폴더 전체 삭제 + report.json + report.md)
+    // S3 폴더 삭제 (reportId 기준)
     try {
-      await this.deleteS3Folder(roomId);
+      await this.deleteS3Folder(reportId);
     } catch (error) {
-      this.logger.warn(`Failed to delete S3 folder for ${roomId}: ${error}`);
+      this.logger.warn(`Failed to delete S3 folder for ${reportId}: ${error}`);
     }
 
-    // DB 레코드 삭제 (roomId 컬럼으로 삭제)
-    await this.reportsRepository.delete({ roomId });
+    // DB 레코드 삭제 (reportId로 삭제)
+    await this.reportsRepository.delete({ reportId });
 
     return { deleted: true };
   }

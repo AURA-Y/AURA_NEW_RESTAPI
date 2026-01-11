@@ -6,13 +6,19 @@ import {
 import { InjectRepository } from "@nestjs/typeorm";
 import { Repository } from "typeorm";
 import { Room } from "./entities/room.entity";
+import { RoomReport } from "./entities/room-report.entity";
+import { File } from "./entities/file.entity";
 import { CreateRoomDto } from "./dto/create-room.dto";  // ✅ class import
 
 @Injectable()
 export class RoomService {
   constructor(
     @InjectRepository(Room)
-    private roomRepository: Repository<Room>
+    private roomRepository: Repository<Room>,
+    @InjectRepository(RoomReport)
+    private roomReportRepository: Repository<RoomReport>,
+    @InjectRepository(File)
+    private fileRepository: Repository<File>,
   ) { }
 
   /**
@@ -94,6 +100,9 @@ export class RoomService {
       throw new ForbiddenException("Only the master can delete this room");
     }
 
+    // File 삭제
+    await this.fileRepository.delete({ roomId });
+    // Room 삭제 (RoomReport는 FK 없이 독립적으로 유지됨)
     await this.roomRepository.delete({ roomId });
   }
 
@@ -132,6 +141,7 @@ export class RoomService {
 
     // 방에 남은 인원이 없으면 방 삭제
     if (room.attendees.length === 0) {
+      await this.fileRepository.delete({ roomId });
       await this.roomRepository.delete({ roomId });
       console.log(`Room ${roomId} deleted because it is empty.`);
     }
