@@ -2,16 +2,22 @@ import {
   Controller,
   Post,
   Get,
+  Patch,
+  Delete,
   Body,
   Param,
   HttpCode,
   HttpStatus,
   ValidationPipe,
+  UseGuards,
+  Request,
 } from '@nestjs/common';
 import { AuthService } from './auth.service';
 import { RegisterDto } from './dto/register.dto';
 import { LoginDto } from './dto/login.dto';
+import { UpdateProfileDto } from './dto/update-profile.dto';
 import { AuthResponseDto } from './dto/auth-response.dto';
+import { JwtAuthGuard } from './guards/jwt-auth.guard';
 
 @Controller('auth')
 export class AuthController {
@@ -52,5 +58,32 @@ export class AuthController {
   ): Promise<{ available: boolean }> {
     const available = await this.authService.checkNicknameAvailability(nickName);
     return { available };
+  }
+
+  /**
+   * 프로필 수정
+   * PATCH /auth/profile
+   */
+  @Patch('profile')
+  @UseGuards(JwtAuthGuard)
+  @HttpCode(HttpStatus.OK)
+  async updateProfile(
+    @Request() req: { user: { userId: string } },
+    @Body(ValidationPipe) updateProfileDto: UpdateProfileDto,
+  ): Promise<AuthResponseDto> {
+    return this.authService.updateProfile(req.user.userId, updateProfileDto);
+  }
+
+  /**
+   * 회원 탈퇴
+   * DELETE /auth/withdraw
+   */
+  @Delete('withdraw')
+  @UseGuards(JwtAuthGuard)
+  @HttpCode(HttpStatus.OK)
+  async withdraw(
+    @Request() req: { user: { userId: string } },
+  ): Promise<{ message: string }> {
+    return this.authService.withdraw(req.user.userId);
   }
 }

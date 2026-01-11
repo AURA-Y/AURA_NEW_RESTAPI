@@ -150,4 +150,95 @@ export class AuthService {
     });
     return !existingUser; // 사용자가 없으면 true (사용 가능)
   }
+
+  /**
+   * 프로필 수정
+   */
+  async updateProfile(
+    userId: string,
+    updateData: { nickName?: string; currentPassword?: string; newPassword?: string },
+  ): Promise<AuthResponseDto> {
+    const user = await this.userRepository.findOne({
+      where: { userId },
+      select: {
+        userId: true,
+        email: true,
+        nickName: true,
+        userPassword: true,
+        createdAt: true,
+        updatedAt: true,
+      },
+    });
+
+    if (!user) {
+      throw new UnauthorizedException('사용자를 찾을 수 없습니다.');
+    }
+
+    // 닉네임 변경 시 중복 확인
+    if (updateData.nickName && updateData.nickName !== user.nickName) {
+      const existingNickname = await this.userRepository.findOne({
+        where: { nickName: updateData.nickName },
+      });
+
+      if (existingNickname) {
+        throw new ConflictException('이미 사용 중인 닉네임입니다.');
+      }
+
+      user.nickName = updateData.nickName;
+    }
+
+    // 비밀번호 변경
+    if (updateData.newPassword) {
+      if (!updateData.currentPassword) {
+        throw new ConflictException('비밀번호 변경 시 현재 비밀번호가 필요합니다.');
+      }
+
+      const isPasswordValid = await bcrypt.compare(
+        updateData.currentPassword,
+        user.userPassword,
+      );
+
+      if (!isPasswordValid) {
+        throw new UnauthorizedException('현재 비밀번호가 일치하지 않습니다.');
+      }
+
+      user.userPassword = await bcrypt.hash(updateData.newPassword, 10);
+    }
+
+    await this.userRepository.save(user);
+
+    this.logger.log(`User profile updated: ${user.email} (${user.nickName})`);
+
+    // 새 JWT 토큰 생성 (닉네임이 변경되었을 수 있으므로)
+    const accessToken = this.generateToken(user);
+
+    return new AuthResponseDto(accessToken, {
+      id: user.userId,
+      userId: user.userId,
+      email: user.email,
+      nickName: user.nickName,
+      nickname: user.nickName,
+      createdAt: user.createdAt,
+      updatedAt: user.updatedAt,
+    });
+  }
+
+  /**
+   * 회원 탈퇴
+   */
+  async withdraw(userId: string): Promise<{ message: string }> {
+    const user = await this.userRepository.findOne({
+      where: { userId },
+    });
+
+    if (!user) {
+      throw new UnauthorizedException('사용자를 찾을 수 없습니다.');
+    }
+
+    await this.userRepository.remove(user);
+
+    this.logger.log(`User withdrawn: ${user.email} (${user.nickName})`);
+
+    return { message: '계정이 성공적으로 삭제되었습니다.' };
+  }
 }
