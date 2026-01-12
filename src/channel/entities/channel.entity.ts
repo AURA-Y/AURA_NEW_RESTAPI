@@ -12,6 +12,7 @@ import { ChannelMember } from "./channel-member.entity";
 import { Team } from "./team.entity";
 import { Room } from "../../room/entities/room.entity";
 import { RoomReport } from "../../room/entities/room-report.entity";
+import { JoinRequest } from "./join-request.entity";
 import { v4 as uuidv4 } from "uuid";
 
 @Entity("Channel")
@@ -53,4 +54,7 @@ export class Channel {
 
   @OneToMany(() => RoomReport, (report) => report.channel)
   reports: RoomReport[];
+
+  @OneToMany(() => JoinRequest, (request) => request.channel)
+  joinRequests: JoinRequest[];
 }

@@ -53,6 +53,10 @@ export class TeamService {
 
     await this.teamRepository.save(team);
 
+    // 생성자를 해당 팀의 멤버로 추가
+    member.teamId = team.teamId;
+    await this.channelMemberRepository.save(member);
+
     // 생성된 팀 정보 반환
     return this.teamRepository.findOne({
       where: { teamId: team.teamId },
@@ -218,6 +222,12 @@ export class TeamService {
       throw new NotFoundException('Target user is not a member of this channel');
     }
 
+    // ADMIN은 다른 ADMIN이나 OWNER를 팀에 할당할 수 없음
+    if (requesterMember.role === ChannelRole.ADMIN && 
+        (targetMember.role === ChannelRole.ADMIN || targetMember.role === ChannelRole.OWNER)) {
+      throw new ForbiddenException('Admin cannot assign other admins or owner to teams');
+    }
+
     // 팀에 멤버 할당 (teamId 업데이트)
     targetMember.teamId = teamId;
     await this.channelMemberRepository.save(targetMember);
@@ -265,10 +275,18 @@ export class TeamService {
       }
     });
 
-    if (targetMember) {
-      targetMember.teamId = null;
-      await this.channelMemberRepository.save(targetMember);
+    if (!targetMember) {
+      throw new NotFoundException('Target user is not a member of this channel');
     }
+
+    // ADMIN은 다른 ADMIN이나 OWNER를 팀에서 제거할 수 없음
+    if (requesterMember.role === ChannelRole.ADMIN && 
+        (targetMember.role === ChannelRole.ADMIN || targetMember.role === ChannelRole.OWNER)) {
+      throw new ForbiddenException('Admin cannot remove other admins or owner from teams');
+    }
+
+    targetMember.teamId = null;
+    await this.channelMemberRepository.save(targetMember);
 
     // 업데이트된 멤버 정보 반환
     return this.channelMemberRepository.findOne({

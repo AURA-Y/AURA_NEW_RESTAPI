@@ -7,12 +7,14 @@ import { TeamService } from './team.service';
 import { Channel } from './entities/channel.entity';
 import { ChannelMember } from './entities/channel-member.entity';
 import { Team } from './entities/team.entity';
+import { JoinRequest } from './entities/join-request.entity';
 import { User } from '../auth/entities/user.entity';
 
 @Module({
-  imports: [TypeOrmModule.forFeature([Channel, ChannelMember, Team, User])],
+  imports: [TypeOrmModule.forFeature([Channel, ChannelMember, Team, JoinRequest, User])],
   controllers: [ChannelController, TeamController],
   providers: [ChannelService, TeamService],
   exports: [ChannelService, TeamService],
 })
 export class ChannelModule {}
+

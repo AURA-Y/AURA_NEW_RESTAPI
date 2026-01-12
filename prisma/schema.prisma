@@ -25,6 +25,12 @@ enum ReportScope {
   PRIVATE // 참여자만 공개
 }
 
+enum JoinRequestStatus {
+  PENDING  // 대기중
+  APPROVED // 승인됨
+  REJECTED // 거절됨
+}
+
 // --------------------------------------
 // 2. Models
 // --------------------------------------
@@ -41,6 +47,7 @@ model User {
   ownedChannels Channel[]       @relation("ChannelOwner") // 내가 만든 채널들
   memberships   ChannelMember[] // 내가 소속된 채널 및 역할 정보
   createdRooms  Room[]          @relation("RoomMaster") // 내가 방장인 회의방들
+  joinRequests  JoinRequest[]   // 내가 보낸 가입 요청들
 }
 
 model Channel {
@@ -53,10 +60,11 @@ model Channel {
   owner   User   @relation("ChannelOwner", fields: [ownerId], references: [userId])
 
   // 채널 내 리소스
-  members ChannelMember[]
-  teams   Team[]
-  rooms   Room[]
-  reports RoomReport[]
+  members      ChannelMember[]
+  teams        Team[]
+  rooms        Room[]
+  reports      RoomReport[]
+  joinRequests JoinRequest[] // 이 채널에 대한 가입 요청들
 }
 
 model ChannelMember {
@@ -142,4 +150,19 @@ model File {
 
   roomId String @db.VarChar(255) // Room과 타입 일치
   room   Room   @relation(fields: [roomId], references: [roomId])
+}
+
+model JoinRequest {
+  id          String            @id @default(uuid()) @db.Uuid
+  userId      String            @db.Uuid
+  channelId   String            @db.Uuid
+  status      JoinRequestStatus @default(PENDING)
+  createdAt   DateTime          @default(now())
+  processedAt DateTime?
+  expiresAt   DateTime?         // 만료 시간 (처리 후 24시간)
+
+  user    User    @relation(fields: [userId], references: [userId])
+  channel Channel @relation(fields: [channelId], references: [channelId])
+
+  @@unique([userId, channelId]) // 중복 요청 방지
 }

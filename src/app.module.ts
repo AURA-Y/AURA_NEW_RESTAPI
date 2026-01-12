@@ -10,6 +10,7 @@ import { User } from './auth/entities/user.entity';
 import { Channel } from './channel/entities/channel.entity';
 import { ChannelMember } from './channel/entities/channel-member.entity';
 import { Team } from './channel/entities/team.entity';
+import { JoinRequest } from './channel/entities/join-request.entity';
 import { HealthController } from './health/health.controller';
 import {
   Room,
@@ -38,6 +39,7 @@ import {
           Channel,
           ChannelMember,
           Team,
+          JoinRequest,
           Room,
           RoomReport,
           File,

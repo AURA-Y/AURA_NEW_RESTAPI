@@ -1,8 +1,9 @@
 import { Injectable, NotFoundException, ForbiddenException, ConflictException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository } from 'typeorm';
+import { Repository, Not } from 'typeorm';
 import { Channel } from './entities/channel.entity';
 import { ChannelMember, ChannelRole } from './entities/channel-member.entity';
+import { JoinRequest, JoinRequestStatus } from './entities/join-request.entity';
 import { User } from '../auth/entities/user.entity';
 import { CreateChannelDto } from './dto/create-channel.dto';
 import { UpdateChannelDto } from './dto/update-channel.dto';
@@ -14,6 +15,8 @@ export class ChannelService {
     private channelRepository: Repository<Channel>,
     @InjectRepository(ChannelMember)
     private channelMemberRepository: Repository<ChannelMember>,
+    @InjectRepository(JoinRequest)
+    private joinRequestRepository: Repository<JoinRequest>,
     @InjectRepository(User)
     private userRepository: Repository<User>,
   ) {}
@@ -71,6 +74,27 @@ export class ChannelService {
       .leftJoin('channel.members', 'myMembership')
       .where('myMembership.userId = :userId', { userId })
       .orderBy('channel.createdAt', 'ASC')
+      .getMany();
+
+    return channels;
+  }
+
+  /**
+   * 모든 채널 목록 조회 (채널 검색용 - 메타데이터만)
+   */
+  async getAllChannels() {
+    const channels = await this.channelRepository
+      .createQueryBuilder('channel')
+      .leftJoinAndSelect('channel.owner', 'owner')
+      .select([
+        'channel.channelId',
+        'channel.channelName',
+        'channel.createdAt',
+        'owner.userId',
+        'owner.nickName',
+        'owner.email',
+      ])
+      .orderBy('channel.createdAt', 'DESC')
       .getMany();
 
     return channels;
@@ -297,5 +321,163 @@ export class ChannelService {
     });
 
     return result.affected !== undefined && result.affected > 0;
+  }
+
+  // ==================== Join Request Methods ====================
+
+  /**
+   * 가입 요청 생성
+   */
+  async createJoinRequest(channelId: string, userId: string) {
+    // 채널 존재 확인
+    const channel = await this.channelRepository.findOne({
+      where: { channelId },
+    });
+
+    if (!channel) {
+      throw new NotFoundException('Channel not found');
+    }
+
+    // 이미 멤버인지 확인
+    const existingMember = await this.channelMemberRepository.findOne({
+      where: { channelId, userId },
+    });
+
+    if (existingMember) {
+      throw new ConflictException('You are already a member of this channel');
+    }
+
+    // 이미 대기 중인 요청이 있는지 확인
+    const existingRequest = await this.joinRequestRepository.findOne({
+      where: { channelId, userId, status: JoinRequestStatus.PENDING },
+    });
+
+    if (existingRequest) {
+      throw new ConflictException('You already have a pending join request');
+    }
+
+    // 가입 요청 생성
+    const joinRequest = this.joinRequestRepository.create({
+      channelId,
+      userId,
+    });
+
+    return this.joinRequestRepository.save(joinRequest);
+  }
+
+  /**
+   * 채널의 가입 요청 목록 조회 (Owner만)
+   */
+  async getJoinRequests(channelId: string, requestUserId: string) {
+    // 채널 조회 및 Owner 확인
+    const channel = await this.channelRepository.findOne({
+      where: { channelId },
+    });
+
+    if (!channel) {
+      throw new NotFoundException('Channel not found');
+    }
+
+    if (channel.ownerId !== requestUserId) {
+      throw new ForbiddenException('Only channel owner can view join requests');
+    }
+
+    // PENDING 상태의 요청만 조회
+    return this.joinRequestRepository.find({
+      where: { channelId, status: JoinRequestStatus.PENDING },
+      relations: ['user'],
+      order: { createdAt: 'DESC' },
+    });
+  }
+
+  /**
+   * 가입 요청 승인
+   */
+  async approveJoinRequest(requestId: string, requestUserId: string) {
+    const joinRequest = await this.joinRequestRepository.findOne({
+      where: { id: requestId },
+      relations: ['channel'],
+    });
+
+    if (!joinRequest) {
+      throw new NotFoundException('Join request not found');
+    }
+
+    // Owner만 승인 가능
+    if (joinRequest.channel.ownerId !== requestUserId) {
+      throw new ForbiddenException('Only channel owner can approve requests');
+    }
+
+    if (joinRequest.status !== JoinRequestStatus.PENDING) {
+      throw new ConflictException('This request has already been processed');
+    }
+
+    // 만료 시간 설정 (처리 후 24시간)
+    const expiresAt = new Date();
+    expiresAt.setHours(expiresAt.getHours() + 24);
+
+    // 요청 상태 업데이트
+    await this.joinRequestRepository.update(requestId, {
+      status: JoinRequestStatus.APPROVED,
+      processedAt: new Date(),
+      expiresAt,
+    });
+
+    // ChannelMember로 추가
+    const newMember = this.channelMemberRepository.create({
+      channelId: joinRequest.channelId,
+      userId: joinRequest.userId,
+      role: ChannelRole.MEMBER,
+    });
+
+    await this.channelMemberRepository.save(newMember);
+
+    return { success: true, message: 'Join request approved' };
+  }
+
+  /**
+   * 가입 요청 거절
+   */
+  async rejectJoinRequest(requestId: string, requestUserId: string) {
+    const joinRequest = await this.joinRequestRepository.findOne({
+      where: { id: requestId },
+      relations: ['channel'],
+    });
+
+    if (!joinRequest) {
+      throw new NotFoundException('Join request not found');
+    }
+
+    // Owner만 거절 가능
+    if (joinRequest.channel.ownerId !== requestUserId) {
+      throw new ForbiddenException('Only channel owner can reject requests');
+    }
+
+    if (joinRequest.status !== JoinRequestStatus.PENDING) {
+      throw new ConflictException('This request has already been processed');
+    }
+
+    // 만료 시간 설정 (처리 후 24시간)
+    const expiresAt = new Date();
+    expiresAt.setHours(expiresAt.getHours() + 24);
+
+    // 요청 상태 업데이트
+    await this.joinRequestRepository.update(requestId, {
+      status: JoinRequestStatus.REJECTED,
+      processedAt: new Date(),
+      expiresAt,
+    });
+
+    return { success: true, message: 'Join request rejected' };
+  }
+
+  /**
+   * 내가 보낸 대기 중인 가입 요청 목록 조회
+   */
+  async getMyPendingJoinRequests(userId: string) {
+    return this.joinRequestRepository.find({
+      where: { userId, status: JoinRequestStatus.PENDING },
+      select: ['id', 'channelId', 'createdAt'],
+    });
   }
 }
