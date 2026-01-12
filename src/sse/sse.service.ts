@@ -4,6 +4,9 @@ import { Repository, In } from 'typeorm';
 import { Subject } from 'rxjs';
 import { User } from '../auth/entities/user.entity';
 import { Room } from '../room/entities/room.entity';
+import { RoomReport } from '../room/entities/room-report.entity';
+import { File } from '../room/entities/file.entity';
+import { ReportsService } from '../reports/reports.service';
 
 export interface NotificationEvent {
   type: string;
@@ -20,6 +23,11 @@ export class SseService {
     private userRepository: Repository<User>,
     @InjectRepository(Room)
     private roomRepository: Repository<Room>,
+    @InjectRepository(RoomReport)
+    private roomReportRepository: Repository<RoomReport>,
+    @InjectRepository(File)
+    private fileRepository: Repository<File>,
+    private reportsService: ReportsService,
   ) {}
 
   // SSE 연결 등록
@@ -120,5 +128,49 @@ export class SseService {
 
     console.log(`[SSE] Report complete notification - notified: ${notified.length}, failed: ${failed.length}`);
     return { notified, failed };
+  }
+
+  // Room 종료 시 Room, RoomReport, File, S3 삭제
+  async cleanupRoom(roomId: string): Promise<{
+    roomDeleted: boolean;
+    reportDeleted: boolean;
+    filesDeleted: number;
+    s3Deleted: boolean;
+  }> {
+    let roomDeleted = false;
+    let reportDeleted = false;
+    let filesDeleted = 0;
+    let s3Deleted = false;
+
+    try {
+      // 1. S3 폴더 삭제 (rooms/roomId/ 전체)
+      try {
+        await this.reportsService.deleteS3Folder(roomId);
+        s3Deleted = true;
+        console.log(`[Cleanup] S3 folder deleted for room: ${roomId}`);
+      } catch (error) {
+        console.error(`[Cleanup] S3 deletion failed for room ${roomId}:`, error.message);
+      }
+
+      // 2. File 삭제 (DB)
+      const fileResult = await this.fileRepository.delete({ roomId });
+      filesDeleted = fileResult.affected || 0;
+      console.log(`[Cleanup] Files deleted: ${filesDeleted} for room: ${roomId}`);
+
+      // 3. RoomReport 삭제 (DB)
+      const reportResult = await this.roomReportRepository.delete({ roomId });
+      reportDeleted = (reportResult.affected || 0) > 0;
+      console.log(`[Cleanup] Report deleted: ${reportDeleted} for room: ${roomId}`);
+
+      // 4. Room 삭제 (DB)
+      const roomResult = await this.roomRepository.delete({ roomId });
+      roomDeleted = (roomResult.affected || 0) > 0;
+      console.log(`[Cleanup] Room deleted: ${roomDeleted} for room: ${roomId}`);
+
+    } catch (error) {
+      console.error(`[Cleanup] Error cleaning up room ${roomId}:`, error.message);
+    }
+
+    return { roomDeleted, reportDeleted, filesDeleted, s3Deleted };
   }
 }

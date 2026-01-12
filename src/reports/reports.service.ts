@@ -623,7 +623,7 @@ export class ReportsService {
   /**
    * S3에서 roomId에 해당하는 모든 폴더 삭제
    */
-  private async deleteS3Folder(roomId: string): Promise<void> {
+  async deleteS3Folder(roomId: string): Promise<void> {
     const prefix = this.getReportFolderPrefix(roomId); // rooms/roomId/
     const deleted = await this.deleteS3FolderByPrefix(prefix);
 
