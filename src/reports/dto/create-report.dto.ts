@@ -45,11 +45,12 @@ export class CreateReportDto {
   reportId?: string;
 
   @IsString()
-  roomTopic: string;
+  @IsNotEmpty({ message: '회의 주제 미입력' })
+  topic: string;
 
   @IsOptional()
   @IsString()
-  summary?: string;
+  description?: string;
 
   @IsArray()
   @IsString({ each: true })

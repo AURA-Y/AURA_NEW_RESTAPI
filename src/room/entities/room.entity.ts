@@ -3,7 +3,6 @@ import {
   PrimaryColumn,
   Column,
   ManyToOne,
-  OneToOne,
   OneToMany,
   JoinColumn,
   BeforeInsert,
@@ -11,7 +10,6 @@ import {
 import { User } from "../../auth/entities/user.entity";
 import { Channel } from "../../channel/entities/channel.entity";
 import { Team } from "../../channel/entities/team.entity";
-import { RoomReport } from "./room-report.entity";
 import { File } from "./file.entity";
 
 @Entity("Room")
@@ -74,6 +72,5 @@ export class Room {
   @OneToMany(() => File, (file) => file.room)
   files: File[];
 
-  @OneToOne(() => RoomReport, (report) => report.room)
-  report: RoomReport | null;
+  // RoomReport와의 FK 관계 제거됨 - Room 삭제해도 Report는 유지됨
 }

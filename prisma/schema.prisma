@@ -113,28 +113,29 @@ model Room {
   team      Team?   @relation(fields: [teamId], references: [teamId])
 
   // 회의 데이터
-  attendees String[] @default([]) 
+  attendees String[] @default([])
   token     String? @db.Text // 미디어 서버 접속용 토큰
 
-  // 파일 및 리포트 
+  // 파일
   files  File[] // 회의 중 업로드된 파일 리스트
-  report RoomReport? // 일대일 관계 (최종 요약본 하나만)
+  // RoomReport와의 FK 관계 제거 - roomId는 단순 문자열로 저장됨
 }
 
 model RoomReport {
   reportId    String   @id @db.VarChar(255) // roomId와 동일한 값
   topic       String   @db.VarChar(255)
   description String?  @db.Text
-  attendees   String[] @default([]) 
+  attendees   String[] @default([])
   createdAt   DateTime @default(now())
 
   // 권한 범위 설정
   shareScope  ReportScope @default(CHANNEL)
   specialAuth String[]    @default([]) @db.Uuid // 특별 열람 권한을 가진 userId 배열
 
-  // 관계 설정
-  roomId    String  @unique @db.VarChar(255) // Room과 타입 일치
-  room      Room    @relation(fields: [roomId], references: [roomId])
+  // roomId는 FK 없이 단순 문자열로 저장 (Room 삭제 시 Report 유지)
+  roomId    String  @unique @db.VarChar(255)
+
+  // Channel, Team 관계는 유지
   channelId String  @db.Uuid
   channel   Channel @relation(fields: [channelId], references: [channelId])
   teamId    String? @db.Uuid
