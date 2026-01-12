@@ -181,7 +181,8 @@ export class ReportsController {
     if (!userId) {
       throw new Error("userId is required from token");
     }
-    return this.reportsService.findAllByUserId(userId);
+    // status 필드를 포함하여 반환 (S3에서 가져옴)
+    return this.reportsService.findAllByUserIdWithStatus(userId);
   }
 
   // 여러 리포트 조회 (쿼리 파라미터로 ids 전달) - 구체적인 라우트 먼저
