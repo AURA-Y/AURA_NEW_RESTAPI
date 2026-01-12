@@ -45,6 +45,19 @@ export interface ReportDetails {
   uploadFileList: FileInfo[];
 }
 
+// ReportMetadata with status for user reports list
+export interface ReportMetadataWithStatus {
+  reportId: string;
+  roomId: string;
+  channelId: string;
+  topic: string;
+  attendees: string[];
+  createdAt: string;
+  shareScope: string;
+  description?: string;
+  status?: "processing" | "completed" | "failed";
+}
+
 @Injectable()
 export class ReportsService {
   private s3Client: S3Client;
@@ -150,6 +163,78 @@ export class ReportsService {
     }
 
     return this.findByIds(reportIds);
+  }
+
+  /**
+   * S3에서 report.json의 status 필드만 빠르게 가져오기
+   */
+  private async getReportStatusFromS3(roomId: string): Promise<"processing" | "completed" | "failed" | null> {
+    const tryKeys = this.getReportJsonKeys(roomId);
+
+    for (const key of tryKeys) {
+      try {
+        const command = new GetObjectCommand({
+          Bucket: this.bucketName,
+          Key: key,
+        });
+
+        const response = await this.s3Client.send(command);
+        const bodyContents = await response.Body.transformToString();
+        const parsed = JSON.parse(bodyContents);
+
+        return parsed.status || null;
+      } catch (error) {
+        if (error.name !== 'NoSuchKey') {
+          this.logger.warn(`[S3 Status] Failed to get status for ${roomId}: ${error.message}`);
+        }
+      }
+    }
+
+    this.logger.debug(`[S3 Status] No report.json found for roomId: ${roomId}`);
+    return null;
+  }
+
+  /**
+   * 사용자의 리포트 목록을 status와 함께 반환
+   */
+  async findAllByUserIdWithStatus(userId: string): Promise<ReportMetadataWithStatus[]> {
+    const user = await this.userRepository.findOne({
+      where: { userId },
+      select: { userId: true, nickName: true },
+    });
+    if (!user) {
+      return [];
+    }
+
+    const reportIds = await this.getAccessibleReportIds(
+      user.userId,
+      user.nickName
+    );
+    if (reportIds.length === 0) {
+      return [];
+    }
+
+    const reports = await this.findByIds(reportIds);
+
+    // S3에서 각 report의 status 가져오기 (병렬 처리)
+    const reportsWithStatus = await Promise.all(
+      reports.map(async (report) => {
+        const status = await this.getReportStatusFromS3(report.reportId);
+        return {
+          reportId: report.reportId,
+          roomId: report.roomId,
+          channelId: report.channelId,
+          topic: report.topic,
+          attendees: report.attendees,
+          createdAt: report.createdAt.toISOString(),
+          shareScope: report.shareScope,
+          description: report.description || undefined,
+          status: status || undefined,
+        } as ReportMetadataWithStatus;
+      })
+    );
+
+    return reportsWithStatus;
   }
 
   async create(reportData: Partial<RoomReport>): Promise<RoomReport> {
