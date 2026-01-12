@@ -4,10 +4,11 @@ import { ReportsService } from "./reports.service";
 import { ReportsController } from "./reports.controller";
 import { RoomReport } from "../room/entities/room-report.entity";
 import { Room } from "../room/entities/room.entity";
+import { File } from "../room/entities/file.entity";
 import { User } from "../auth/entities/user.entity";
 
 @Module({
-  imports: [TypeOrmModule.forFeature([RoomReport, Room, User])],
+  imports: [TypeOrmModule.forFeature([RoomReport, Room, File, User])],
   controllers: [ReportsController],
   providers: [ReportsService],
   exports: [ReportsService],

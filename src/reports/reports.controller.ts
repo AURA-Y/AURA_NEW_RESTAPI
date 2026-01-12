@@ -112,6 +112,16 @@ export class ReportsController {
     return this.reportsService.abortMultipartUpload(body);
   }
 
+  // 파일 다운로드/미리보기용 Presigned URL 발급
+  @Post("file/presign")
+  @UseGuards(JwtAuthGuard)
+  async getFilePresignedUrl(@Body() body: { fileUrl: string }) {
+    const presignedUrl = await this.reportsService.getPresignedDownloadUrl(
+      body.fileUrl
+    );
+    return { presignedUrl };
+  }
+
   // 보고서 요약 업데이트
   @Patch(":id/summary")
   @UseGuards(JwtAuthGuard)
