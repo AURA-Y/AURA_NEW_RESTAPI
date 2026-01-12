@@ -74,19 +74,90 @@ export class SseService {
   }): Promise<{ notified: string[]; failed: string[] }> {
     const { roomId, speakers } = payload;
 
-    // 1. Room에서 attendees(닉네임 배열) 조회
+    // 1. attendees 조회 (Room → RoomReport → speakers 순으로 fallback)
+    let attendees: string[] = [];
+
+    // Room 테이블에서 조회 (삭제되지 않은 경우)
     const room = await this.roomRepository.findOne({
       where: { roomId: roomId },
       select: ['attendees'],
     });
 
-    if (!room || !room.attendees || room.attendees.length === 0) {
-      console.log(`[SSE] No attendees found for room: ${roomId}`);
-      // speakers로 fallback
-      return this.notifyByNicknames(speakers, payload);
+    if (room?.attendees?.length > 0) {
+      attendees = room.attendees;
+    } else {
+      // Room이 없거나 attendees가 비어있으면 RoomReport에서 조회
+      const report = await this.roomReportRepository.findOne({
+        where: { reportId: roomId },
+        select: ['attendees'],
+      });
+
+      if (report?.attendees?.length > 0) {
+        attendees = report.attendees;
+      } else if (speakers?.length > 0) {
+        // 둘 다 없으면 speakers로 fallback
+        attendees = speakers;
+      }
     }
 
-    return this.notifyByNicknames(room.attendees, payload);
+    console.log(`[SSE] ========== handleReportComplete 시작 ==========`);
+    console.log(`[SSE] roomId: ${roomId}`);
+    console.log(`[SSE] Room 조회 결과:`, room?.attendees || 'Room 없음');
+    console.log(`[SSE] 최종 attendees:`, attendees);
+    console.log(`[SSE] speakers from payload:`, speakers);
+
+    // 2. DB에 attendees 업데이트 (attendees가 있을 때만)
+    if (attendees.length > 0) {
+      try {
+        // Report 테이블에서 현재 값 조회
+        const reportBefore = await this.roomReportRepository.findOne({
+          where: { reportId: roomId },
+          select: ['attendees'],
+        });
+        console.log(`[SSE] DB 업데이트 전 RoomReport.attendees:`, reportBefore?.attendees);
+
+        // Report 테이블 업데이트
+        await this.roomReportRepository.update(
+          { reportId: roomId },
+          { attendees }
+        );
+        console.log(`[SSE] DB 업데이트 완료 - attendees:`, attendees);
+
+        // 업데이트 후 확인
+        const reportAfter = await this.roomReportRepository.findOne({
+          where: { reportId: roomId },
+          select: ['attendees'],
+        });
+        console.log(`[SSE] DB 업데이트 후 RoomReport.attendees:`, reportAfter?.attendees);
+
+        // S3 report.json 업데이트 (기존 데이터 유지하면서 attendees만 업데이트)
+        try {
+          const existingReport = await this.reportsService.getReportDetailsFromS3(roomId);
+          console.log(`[SSE] S3 기존 attendees:`, existingReport?.attendees);
+
+          await this.reportsService.saveReportDetailsToS3({
+            ...existingReport,
+            attendees: attendees,
+          });
+          console.log(`[SSE] S3 JSON 업데이트 완료 - attendees:`, attendees);
+        } catch (s3Error) {
+          console.warn(`[SSE] S3 report.json not found, skipping S3 update: ${roomId}`);
+        }
+      } catch (error) {
+        console.error(`[SSE] Failed to update attendees for room ${roomId}:`, error.message);
+      }
+    } else {
+      console.warn(`[SSE] No attendees found, skipping update for room: ${roomId}`);
+    }
+    console.log(`[SSE] ========== handleReportComplete 종료 ==========`);
+
+    // 3. SSE 알림 전송
+    if (!attendees || attendees.length === 0) {
+      console.log(`[SSE] No attendees found for room: ${roomId}`);
+      return { notified: [], failed: [] };
+    }
+
+    return this.notifyByNicknames(attendees, payload);
   }
 
   // 닉네임 목록으로 알림 전송
