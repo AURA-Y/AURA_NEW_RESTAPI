@@ -529,6 +529,17 @@ export class ReportsService {
           parsed.shareScope = "CHANNEL";
         }
 
+        // 기본값 설정 (옛날 데이터 호환성)
+        if (!parsed.uploadFileList) {
+          parsed.uploadFileList = [];
+        }
+        if (!parsed.attendees) {
+          parsed.attendees = [];
+        }
+        if (!parsed.createdAt) {
+          parsed.createdAt = new Date().toISOString();
+        }
+
         return parsed;
       } catch (error) {
         this.logger.warn(`Report JSON not found at key=${key}, try next`);
