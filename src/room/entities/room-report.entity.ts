@@ -16,6 +16,12 @@ export enum ReportScope {
   PRIVATE = "PRIVATE",
 }
 
+export enum ReportStatus {
+  PROCESSING = "processing",
+  COMPLETED = "completed",
+  FAILED = "failed",
+}
+
 @Entity("RoomReport")
 export class RoomReport {
   @PrimaryColumn({ type: "varchar", length: 255 })
@@ -39,6 +45,13 @@ export class RoomReport {
     default: ReportScope.CHANNEL,
   })
   shareScope: ReportScope;
+
+  @Column({
+    type: "enum",
+    enum: ReportStatus,
+    default: ReportStatus.PROCESSING,
+  })
+  status: ReportStatus;
 
   @Column("uuid", { array: true, default: [] })
   specialAuth: string[];

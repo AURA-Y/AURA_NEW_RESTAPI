@@ -74,6 +74,17 @@ export class SseService {
   }): Promise<{ notified: string[]; failed: string[] }> {
     const { roomId, speakers } = payload;
 
+    // 0. RoomReport의 status를 completed로 업데이트
+    try {
+      await this.roomReportRepository.update(
+        { roomId: roomId },
+        { status: 'completed' as any }
+      );
+      console.log(`[SSE] Report status updated to completed: ${roomId}`);
+    } catch (error) {
+      console.error(`[SSE] Failed to update report status: ${roomId}`, error);
+    }
+
     // 1. Room에서 attendees(닉네임 배열) 조회
     const room = await this.roomRepository.findOne({
       where: { roomId: roomId },
