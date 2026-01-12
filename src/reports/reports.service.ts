@@ -645,6 +645,46 @@ export class ReportsService {
     }
   }
 
+  /**
+   * Room.attendees를 RoomReport.attendees로 동기화
+   * Room 삭제 전에 호출하여 알림 전송을 위한 attendees 보존
+   */
+  async syncAttendeesFromRoom(reportId: string): Promise<{ synced: boolean; attendees: string[] }> {
+    // roomId와 reportId는 동일
+    const roomId = reportId;
+
+    const room = await this.roomRepository.findOne({
+      where: { roomId },
+      select: ['attendees'],
+    });
+
+    if (!room || !room.attendees || room.attendees.length === 0) {
+      this.logger.warn(`No attendees found in Room for sync: ${roomId}`);
+      return { synced: false, attendees: [] };
+    }
+
+    // RoomReport 업데이트
+    await this.reportsRepository.update(
+      { reportId },
+      { attendees: room.attendees }
+    );
+
+    // S3의 report.json도 업데이트
+    try {
+      const current = await this.getReportDetailsFromS3(reportId);
+      const updated: ReportDetails = {
+        ...current,
+        attendees: room.attendees,
+      };
+      await this.saveReportDetailsToS3(updated);
+    } catch (error) {
+      this.logger.warn(`Failed to update S3 report.json for ${reportId}: ${error}`);
+    }
+
+    this.logger.log(`Synced ${room.attendees.length} attendees from Room to RoomReport: ${roomId}`);
+    return { synced: true, attendees: room.attendees };
+  }
+
   async deleteReport(reportId: string, userId: string) {
     const user = await this.userRepository.findOne({
       where: { userId },

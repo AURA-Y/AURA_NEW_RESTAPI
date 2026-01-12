@@ -80,13 +80,26 @@ export class SseService {
       select: ['attendees'],
     });
 
-    if (!room || !room.attendees || room.attendees.length === 0) {
-      console.log(`[SSE] No attendees found for room: ${roomId}`);
-      // speakers로 fallback
-      return this.notifyByNicknames(speakers, payload);
+    if (room?.attendees?.length > 0) {
+      console.log(`[SSE] Found ${room.attendees.length} attendees from Room: ${roomId}`);
+      return this.notifyByNicknames(room.attendees, payload);
     }
 
-    return this.notifyByNicknames(room.attendees, payload);
+    // 2. Room이 없거나 attendees가 비어있으면 RoomReport에서 조회
+    console.log(`[SSE] No attendees in Room, checking RoomReport: ${roomId}`);
+    const report = await this.roomReportRepository.findOne({
+      where: { roomId: roomId },
+      select: ['attendees'],
+    });
+
+    if (report?.attendees?.length > 0) {
+      console.log(`[SSE] Found ${report.attendees.length} attendees from RoomReport: ${roomId}`);
+      return this.notifyByNicknames(report.attendees, payload);
+    }
+
+    // 3. RoomReport에도 없으면 speakers로 fallback
+    console.log(`[SSE] No attendees in RoomReport, using speakers (${speakers?.length || 0}): ${roomId}`);
+    return this.notifyByNicknames(speakers, payload);
   }
 
   // 닉네임 목록으로 알림 전송
@@ -111,6 +124,7 @@ export class SseService {
       type: 'report_complete',
       data: {
         roomId: payload.roomId,
+        reportId: payload.roomId, // reportId는 roomId와 동일
         meetingTitle: payload.meetingTitle,
         downloadUrl: payload.downloadUrl,
         completedAt: payload.completedAt,

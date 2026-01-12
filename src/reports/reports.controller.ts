@@ -174,6 +174,13 @@ export class ReportsController {
     return updated;
   }
 
+  // Room.attendees를 RoomReport로 동기화 (Room 삭제 전 호출)
+  @Post(":id/sync-attendees")
+  @UseGuards(JwtAuthGuard)
+  async syncAttendeesFromRoom(@Param("id") id: string) {
+    return this.reportsService.syncAttendeesFromRoom(id);
+  }
+
   @Get("user-reports")
   @UseGuards(JwtAuthGuard)
   async getUserReports(@Req() req: Request) {
