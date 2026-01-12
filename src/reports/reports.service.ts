@@ -184,10 +184,13 @@ export class ReportsService {
 
         return parsed.status || null;
       } catch (error) {
-        // Key not found, try next
+        if (error.name !== 'NoSuchKey') {
+          this.logger.warn(`[S3 Status] Failed to get status for ${roomId}: ${error.message}`);
+        }
       }
     }
 
+    this.logger.debug(`[S3 Status] No report.json found for roomId: ${roomId}`);
     return null;
   }
 
