@@ -58,4 +58,26 @@ export class SseController {
       ...result,
     };
   }
+
+  // livekit-api 서버에서 호출하는 Room 정리 엔드포인트 (인증 없음 - 내부 서버 간 통신)
+  @Post('internal/room-cleanup')
+  @HttpCode(200)
+  async handleRoomCleanup(
+    @Body() payload: { roomId: string },
+  ): Promise<{
+    status: string;
+    roomDeleted: boolean;
+    reportDeleted: boolean;
+    filesDeleted: number;
+    s3Deleted: boolean;
+  }> {
+    console.log(`[Internal] Room cleanup requested for: ${payload.roomId}`);
+
+    const result = await this.sseService.cleanupRoom(payload.roomId);
+
+    return {
+      status: 'ok',
+      ...result,
+    };
+  }
 }
