@@ -244,19 +244,23 @@ export class ReportsService {
     }
 
     // 2. 각 채널에서 접근 가능한 회의록 조회
+    // 접근 가능 조건:
+    // - participantUserIds가 빈 배열 (전체 공개) 이거나
+    // - participantUserIds에 해당 userId가 포함되어 있거나
+    // - attendees에 해당 닉네임이 포함된 경우 (실제 참석자)
     const allAccessibleReports: RoomReport[] = [];
 
     for (const membership of memberships) {
       const queryBuilder = this.reportsRepository
         .createQueryBuilder('report')
         .where('report.channelId = :channelId', { channelId: membership.channelId })
-        .andWhere(':nickName = ANY(report.attendees)', { nickName: user.nickName })
-        // participantUserIds 필터링: 빈 배열이거나 사용자 ID가 포함된 경우
+        // participantUserIds 기반 접근 권한 또는 실제 참석자
         .andWhere(
-          '(report.participantUserIds = :emptyArray OR :userId = ANY(report.participantUserIds))',
+          '(report.participantUserIds = :emptyArray OR :userId = ANY(report.participantUserIds) OR :nickName = ANY(report.attendees))',
           {
             emptyArray: '{}',
-            userId
+            userId,
+            nickName: user.nickName
           }
         );
 

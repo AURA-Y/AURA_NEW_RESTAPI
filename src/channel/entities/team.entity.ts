@@ -41,6 +41,4 @@ export class Team {
 
   @OneToMany(() => ChannelMember, (member) => member.team)
   members: ChannelMember[];
-
-  // Room과 RoomReport는 teamIds 배열로 관리되므로 OneToMany 관계 제거
 }
