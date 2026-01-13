@@ -1,4 +1,4 @@
-import { Injectable, NotFoundException, ForbiddenException, ConflictException } from '@nestjs/common';
+import { Injectable, NotFoundException, ForbiddenException, ConflictException, BadRequestException, Logger } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository, Not } from 'typeorm';
 import { Channel } from './entities/channel.entity';
@@ -7,9 +7,12 @@ import { JoinRequest, JoinRequestStatus } from './entities/join-request.entity';
 import { User } from '../auth/entities/user.entity';
 import { CreateChannelDto } from './dto/create-channel.dto';
 import { UpdateChannelDto } from './dto/update-channel.dto';
+import { ShareToSlackDto } from './dto/share-to-slack.dto';
 
 @Injectable()
 export class ChannelService {
+  private readonly logger = new Logger(ChannelService.name);
+
   constructor(
     @InjectRepository(Channel)
     private channelRepository: Repository<Channel>,
@@ -479,5 +482,165 @@ export class ChannelService {
       where: { userId, status: JoinRequestStatus.PENDING },
       select: ['id', 'channelId', 'createdAt'],
     });
+  }
+
+  // ==================== Slack Integration ====================
+
+  /**
+   * 일반 마크다운을 Slack mrkdwn 포맷으로 변환
+   */
+  private convertToSlackMarkdown(text: string): string {
+    // 1. 첫 번째 "## 회의 요약" 이전 내용 제거 (제목, 일시, 구분선)
+    let processed = text;
+    const summaryStartMatch = text.match(/## 회의 요약/);
+    if (summaryStartMatch && summaryStartMatch.index !== undefined) {
+      processed = text.substring(summaryStartMatch.index);
+    }
+
+    return processed
+      // **bold** → *bold*
+      .replace(/\*\*(.+?)\*\*/g, '*$1*')
+      // # Heading → *Heading*
+      .replace(/^### (.+)$/gm, '*$1*')
+      .replace(/^## (.+)$/gm, '*$1*')
+      .replace(/^# (.+)$/gm, '*$1*')
+      // --- → ─────────────
+      .replace(/^---$/gm, '─────────────────────')
+      // - item → • item
+      .replace(/^- (.+)$/gm, '• $1')
+      // `code` → `code` (동일)
+      // > quote → > quote (동일)
+      ;
+  }
+
+  /**
+   * Slack으로 회의록 공유
+   */
+  async shareToSlack(channelId: string, shareDto: ShareToSlackDto, userId: string) {
+    // 채널 조회
+    const channel = await this.channelRepository.findOne({
+      where: { channelId },
+    });
+
+    if (!channel) {
+      throw new NotFoundException('Channel not found');
+    }
+
+    // 멤버십 확인
+    const membership = await this.channelMemberRepository.findOne({
+      where: { channelId, userId },
+    });
+
+    if (!membership) {
+      throw new ForbiddenException('You are not a member of this channel');
+    }
+
+    // Slack 웹훅 URL 확인
+    if (!channel.slackWebhookUrl) {
+      throw new BadRequestException('Slack webhook URL is not configured for this channel');
+    }
+
+    // Slack 메시지 구성
+    const attendeesText = shareDto.attendees?.length
+      ? shareDto.attendees.join(', ')
+      : '(참석자 정보 없음)';
+
+    // 마크다운을 Slack 포맷으로 변환
+    const slackFormattedSummary = this.convertToSlackMarkdown(shareDto.summary);
+
+    const slackMessage = {
+      blocks: [
+        {
+          type: 'header',
+          text: {
+            type: 'plain_text',
+            text: `📝 ${shareDto.title}`,
+            emoji: true,
+          },
+        },
+        {
+          type: 'section',
+          fields: [
+            {
+              type: 'mrkdwn',
+              text: `*📅 회의 일시:*\n${shareDto.date || '날짜 정보 없음'}`,
+            },
+            {
+              type: 'mrkdwn',
+              text: `*👥 참석자:*\n${attendeesText}`,
+            },
+          ],
+        },
+        {
+          type: 'divider',
+        },
+        {
+          type: 'section',
+          text: {
+            type: 'mrkdwn',
+            text: slackFormattedSummary,
+          },
+        },
+        {
+          type: 'context',
+          elements: [
+            {
+              type: 'mrkdwn',
+              text: '_AURA 회의 시스템에서 공유됨_',
+            },
+          ],
+        },
+      ],
+    };
+
+    try {
+      // Slack 웹훅으로 전송
+      const response = await fetch(channel.slackWebhookUrl, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(slackMessage),
+      });
+
+      if (!response.ok) {
+        const errorText = await response.text();
+        this.logger.error(`Slack webhook failed: ${errorText}`);
+        throw new BadRequestException('Failed to send message to Slack');
+      }
+
+      this.logger.log(`Meeting report shared to Slack for channel ${channelId}`);
+      return { success: true, message: 'Successfully shared to Slack' };
+    } catch (error) {
+      this.logger.error(`Slack sharing error: ${error.message}`);
+      if (error instanceof BadRequestException) {
+        throw error;
+      }
+      throw new BadRequestException('Failed to connect to Slack');
+    }
+  }
+
+  /**
+   * 채널의 Slack 웹훅 설정 여부 확인
+   */
+  async hasSlackWebhook(channelId: string, userId: string): Promise<boolean> {
+    const channel = await this.channelRepository.findOne({
+      where: { channelId },
+    });
+
+    if (!channel) {
+      throw new NotFoundException('Channel not found');
+    }
+
+    // 멤버십 확인
+    const membership = await this.channelMemberRepository.findOne({
+      where: { channelId, userId },
+    });
+
+    if (!membership) {
+      throw new ForbiddenException('You are not a member of this channel');
+    }
+
+    return !!channel.slackWebhookUrl;
   }
 }
