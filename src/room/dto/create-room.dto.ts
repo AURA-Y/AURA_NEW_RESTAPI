@@ -5,6 +5,8 @@ import {
   IsUUID,
   IsArray,
   MaxLength,
+  ArrayMaxSize,
+  Matches,
 } from 'class-validator';
 
 export class CreateRoomDto {
@@ -28,16 +30,17 @@ export class CreateRoomDto {
   roomPassword?: string;
 
   @IsUUID()
-  @IsNotEmpty({ message: '방장 ID를 입력해주세요' })
-  masterId: string;
+  @IsOptional()  // 컨트롤러에서 req.user.id로 설정
+  masterId?: string;
 
   @IsUUID()
   @IsNotEmpty({ message: '채널 ID 미입력' })
   channelId: string;
 
-  @IsUUID()
+  @IsArray()
+  @IsUUID('4', { each: true })
   @IsOptional()
-  teamId?: string;
+  participantUserIds?: string[];  // 빈 배열 = 전체 공개, 값이 있으면 해당 유저만 접근 가능
 
   @IsArray()
   @IsOptional()
@@ -46,4 +49,12 @@ export class CreateRoomDto {
   @IsString()
   @IsOptional()
   token?: string;
+
+  @IsArray()
+  @IsOptional()
+  @ArrayMaxSize(10, { message: '태그는 최대 10개까지 가능합니다' })
+  @IsString({ each: true })
+  @MaxLength(20, { each: true, message: '각 태그는 20자 이내여야 합니다' })
+  @Matches(/^[a-zA-Z0-9가-힣_-]+$/, { each: true, message: '태그는 특수문자 없이 입력해주세요' })
+  tags?: string[];
 }

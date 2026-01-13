@@ -6,6 +6,7 @@ generator client {
 
 datasource db {
   provider = "postgresql"
+  url      = env("DATABASE_URL")
 }
 
 // --------------------------------------
@@ -74,11 +75,11 @@ model ChannelMember {
   role      ChannelRole @default(MEMBER)
   joinedAt  DateTime    @default(now())
 
-  user    User    @relation(fields: [userId], references: [userId])
-  channel Channel @relation(fields: [channelId], references: [channelId])
-  team    Team?   @relation(fields: [teamId], references: [teamId])
+  user    User    @relation(fields: [userId], references: [userId], onDelete: Cascade)
+  channel Channel @relation(fields: [channelId], references: [channelId], onDelete: Cascade)
+  team    Team?   @relation(fields: [teamId], references: [teamId], onDelete: SetNull)
 
-  @@id([channelId, userId]) // 복합키 설정
+  @@id([userId, channelId]) // 복합키 설정 (userId, channelId 순서로 변경)
 }
 
 model Team {
@@ -87,11 +88,9 @@ model Team {
   createdAt DateTime @default(now())
 
   channelId String  @db.Uuid
-  channel   Channel @relation(fields: [channelId], references: [channelId])
+  channel   Channel @relation(fields: [channelId], references: [channelId], onDelete: Cascade)
 
   members ChannelMember[] // 팀에 속한 멤버들
-  rooms   Room[] // 팀 전용 회의방
-  reports RoomReport[] // 팀 리포트
 }
 
 model Room {
@@ -109,16 +108,17 @@ model Room {
   // 소속 정보
   channelId String  @db.Uuid
   channel   Channel @relation(fields: [channelId], references: [channelId])
-  teamId    String? @db.Uuid
-  team      Team?   @relation(fields: [teamId], references: [teamId])
+
+  // 접근 권한 (유저 기반) - 빈 배열이면 전체 공개
+  participantUserIds String[] @default([]) @db.Uuid
 
   // 회의 데이터
   attendees String[] @default([])
-  token     String? @db.Text // 미디어 서버 접속용 토큰
+  token     String?  @db.Text // 미디어 서버 접속용 토큰
+  tags      String[] @default([]) // 회의 태그 (최대 10개)
 
   // 파일
-  files  File[] // 회의 중 업로드된 파일 리스트
-  // RoomReport와의 FK 관계 제거 - roomId는 단순 문자열로 저장됨
+  files File[] // 회의 중 업로드된 파일 리스트
 }
 
 model RoomReport {
@@ -126,6 +126,7 @@ model RoomReport {
   topic       String   @db.VarChar(255)
   description String?  @db.Text
   attendees   String[] @default([])
+  tags        String[] @default([]) // 회의 태그 (Room에서 복사)
   createdAt   DateTime @default(now())
 
   // 권한 범위 설정
@@ -133,13 +134,14 @@ model RoomReport {
   specialAuth String[]    @default([]) @db.Uuid // 특별 열람 권한을 가진 userId 배열
 
   // roomId는 FK 없이 단순 문자열로 저장 (Room 삭제 시 Report 유지)
-  roomId    String  @unique @db.VarChar(255)
+  roomId String @unique @db.VarChar(255)
 
-  // Channel, Team 관계는 유지
+  // Channel 관계만 유지 (Team 관계 제거)
   channelId String  @db.Uuid
   channel   Channel @relation(fields: [channelId], references: [channelId])
-  teamId    String? @db.Uuid
-  team      Team?   @relation(fields: [teamId], references: [teamId])
+
+  // 접근 권한 (유저 기반) - 빈 배열이면 전체 공개
+  participantUserIds String[] @default([]) @db.Uuid
 }
 
 model File {

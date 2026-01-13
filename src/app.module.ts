@@ -45,8 +45,8 @@ import {
           RoomReport,
           File,
         ],
-        // synchronize: configService.get<string>('NODE_ENV') !== 'production',
-        synchronize: false, // 원격 DB 사용 시 스키마 보호를 위해 false로 설정
+        // 로컬 개발 시 자동 스키마 동기화 (production에서는 false 권장)
+        synchronize: configService.get<string>('NODE_ENV') !== 'production',
         logging: configService.get<string>('NODE_ENV') !== 'production',
         ssl:
           configService.get<string>('DB_SSL') === 'true'

@@ -10,6 +10,7 @@ import { RoomReport } from "../room/entities/room-report.entity";
 import { Room } from "../room/entities/room.entity";
 import { File } from "../room/entities/file.entity";
 import { User } from "../auth/entities/user.entity";
+import { ChannelMember } from "../channel/entities/channel-member.entity";
 import {
   S3Client,
   GetObjectCommand,
@@ -41,6 +42,7 @@ export interface ReportDetails {
   topic: string;
   description?: string;
   attendees: string[];
+  tags?: string[];
   createdAt: string;
   shareScope: "CHANNEL" | "PRIVATE";
   uploadFileList: FileInfo[];
@@ -60,8 +62,8 @@ export class ReportsService {
     private userRepository: Repository<User>,
     @InjectRepository(Room)
     private roomRepository: Repository<Room>,
-    @InjectRepository(File)
-    private fileRepository: Repository<File>,
+    @InjectRepository(ChannelMember)
+    private channelMemberRepository: Repository<ChannelMember>,
     private configService: ConfigService
   ) {
     this.bucketName =
@@ -135,6 +137,95 @@ export class ReportsService {
     });
   }
 
+  /**
+   * 사용자가 특정 회의록에 접근 가능한지 확인
+   */
+  async checkReportAccess(reportId: string, userId: string): Promise<boolean> {
+    const report = await this.reportsRepository.findOne({
+      where: { reportId },
+      select: ['reportId', 'channelId', 'participantUserIds']
+    });
+
+    if (!report) return false;
+
+    // 채널 멤버십 확인
+    const membership = await this.channelMemberRepository.findOne({
+      where: { userId, channelId: report.channelId }
+    });
+
+    if (!membership) return false;
+
+    // 전체 공개인 경우 (participantUserIds가 빈 배열)
+    if (!report.participantUserIds || report.participantUserIds.length === 0) {
+      return true;
+    }
+
+    // 유저 제한인 경우 - 사용자 ID가 포함되어 있는지 확인
+    return report.participantUserIds.includes(userId);
+  }
+
+  /**
+   * 접근 권한을 확인한 후 리포트 조회
+   */
+  async findByIdWithAccessCheck(reportId: string, userId: string): Promise<RoomReport> {
+    const report = await this.findById(reportId);
+    if (!report) {
+      throw new NotFoundException(`Report not found: ${reportId}`);
+    }
+
+    const hasAccess = await this.checkReportAccess(reportId, userId);
+    if (!hasAccess) {
+      throw new ForbiddenException('이 회의록에 접근할 권한이 없습니다');
+    }
+
+    return report;
+  }
+
+  /**
+   * 접근 권한을 확인한 후 S3에서 리포트 상세 조회
+   */
+  async getReportDetailsFromS3WithAccessCheck(reportId: string, userId: string): Promise<ReportDetails & { summary?: string }> {
+    const hasAccess = await this.checkReportAccess(reportId, userId);
+    if (!hasAccess) {
+      throw new ForbiddenException('이 회의록에 접근할 권한이 없습니다');
+    }
+
+    return this.getReportDetailsFromS3(reportId);
+  }
+
+  /**
+   * 사용자가 접근 가능한 회의록 목록 조회
+   * - participantUserIds가 빈 배열이면 전체 공개 (채널 멤버면 접근 가능)
+   * - participantUserIds가 있으면 해당 유저만 접근 가능
+   */
+  async getAccessibleReports(userId: string, channelId: string): Promise<RoomReport[]> {
+    // 1. 사용자의 채널 멤버십 조회
+    const membership = await this.channelMemberRepository.findOne({
+      where: { userId, channelId }
+    });
+
+    if (!membership) {
+      throw new ForbiddenException('채널 멤버가 아닙니다');
+    }
+
+    // 2. 접근 가능한 회의록 조회
+    // participantUserIds가 빈 배열이거나, 사용자 ID가 포함된 경우
+    const queryBuilder = this.reportsRepository
+      .createQueryBuilder('report')
+      .where('report.channelId = :channelId', { channelId })
+      .andWhere(
+        '(report.participantUserIds = :emptyArray OR :userId = ANY(report.participantUserIds))',
+        {
+          emptyArray: '{}',
+          userId
+        }
+      );
+
+    return queryBuilder
+      .orderBy('report.createdAt', 'DESC')
+      .getMany();
+  }
+
   async findAllByUserId(userId: string): Promise<RoomReport[]> {
     const user = await this.userRepository.findOne({
       where: { userId },
@@ -144,15 +235,49 @@ export class ReportsService {
       return [];
     }
 
-    const reportIds = await this.getAccessibleReportIds(
-      user.userId,
-      user.nickName
-    );
-    if (reportIds.length === 0) {
+    // 1. 사용자가 참여한 모든 채널의 멤버십 조회
+    const memberships = await this.channelMemberRepository.find({
+      where: { userId },
+      select: ['channelId', 'teamId']
+    });
+
+    if (memberships.length === 0) {
       return [];
     }
 
-    return this.findByIds(reportIds);
+    // 2. 각 채널에서 접근 가능한 회의록 조회
+    // 접근 가능 조건:
+    // - participantUserIds가 빈 배열 (전체 공개) 이거나
+    // - participantUserIds에 해당 userId가 포함되어 있거나
+    // - attendees에 해당 닉네임이 포함된 경우 (실제 참석자)
+    const allAccessibleReports: RoomReport[] = [];
+
+    for (const membership of memberships) {
+      const queryBuilder = this.reportsRepository
+        .createQueryBuilder('report')
+        .where('report.channelId = :channelId', { channelId: membership.channelId })
+        // participantUserIds 기반 접근 권한 또는 실제 참석자
+        .andWhere(
+          '(report.participantUserIds = :emptyArray OR :userId = ANY(report.participantUserIds) OR :nickName = ANY(report.attendees))',
+          {
+            emptyArray: '{}',
+            userId,
+            nickName: user.nickName
+          }
+        );
+
+      const reports = await queryBuilder.getMany();
+      allAccessibleReports.push(...reports);
+    }
+
+    // 중복 제거 및 정렬
+    const uniqueReports = Array.from(
+      new Map(allAccessibleReports.map(r => [r.reportId, r])).values()
+    );
+
+    return uniqueReports.sort((a, b) =>
+      new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
+    );
   }
 
   async create(reportData: Partial<RoomReport>): Promise<RoomReport> {
@@ -351,6 +476,7 @@ export class ReportsService {
     topic: string;
     description?: string;
     attendees: string[];
+    tags?: string[];
     uploadFileList: FileInfo[];
     createdAt?: string;
     channelId: string;
@@ -359,6 +485,16 @@ export class ReportsService {
     const reportId = payload.reportId || payload.roomId;
     const createdAt = payload.createdAt || new Date().toISOString();
 
+    // Room에서 participantUserIds 가져오기 (회의록도 동일한 접근 제어 적용)
+    let participantUserIds: string[] = [];
+    const room = await this.roomRepository.findOne({
+      where: { roomId: payload.roomId },
+      select: ['roomId', 'participantUserIds']
+    });
+    if (room && room.participantUserIds) {
+      participantUserIds = room.participantUserIds;
+    }
+
     const meta = this.reportsRepository.create({
       reportId,
       roomId: payload.roomId,
@@ -366,6 +502,8 @@ export class ReportsService {
       topic: payload.topic,
       description: payload.description || null,
       attendees: payload.attendees,
+      participantUserIds,  // Room에서 복사한 participantUserIds
+      tags: payload.tags || [],
       createdAt: new Date(createdAt),
     });
     await this.reportsRepository.save(meta);
@@ -395,11 +533,18 @@ export class ReportsService {
       topic: payload.topic,
       description: payload.description,
       attendees: payload.attendees,
+      tags: payload.tags || [],
       createdAt,
       shareScope: "CHANNEL",
       uploadFileList: payload.uploadFileList || [],
     };
-    await this.saveReportDetailsToS3(details);
+
+    // S3 저장 시도 (실패해도 DB 저장은 완료됨)
+    try {
+      await this.saveReportDetailsToS3(details);
+    } catch (s3Error) {
+      this.logger.warn(`Failed to save report to S3 (report created in DB): ${s3Error.message}`);
+    }
 
     return details;
   }
@@ -593,15 +738,56 @@ export class ReportsService {
           parsed.shareScope = "CHANNEL";
         }
 
+        // DB에서 tags 가져와서 병합 (S3에 없는 경우 대비)
+        if (!parsed.tags || parsed.tags.length === 0) {
+          try {
+            const dbReport = await this.reportsRepository.findOne({
+              where: { reportId: roomId },
+              select: { tags: true },
+            });
+            if (dbReport && dbReport.tags) {
+              parsed.tags = dbReport.tags;
+            }
+          } catch (dbErr) {
+            this.logger.warn(`Failed to fetch tags from DB for ${roomId}: ${dbErr.message}`);
+          }
+        }
+
         return parsed;
       } catch (error) {
         this.logger.warn(`Report JSON not found at key=${key}, try next`);
       }
     }
 
-    throw new NotFoundException(
-      `Report details not found in S3 for ID ${roomId}`
-    );
+    // S3에 파일이 없으면 DB에서 기본 정보 가져오기 (fallback)
+    this.logger.warn(`S3 data not found for ${roomId}, falling back to DB`);
+
+    const dbReport = await this.reportsRepository.findOne({
+      where: { reportId: roomId },
+    });
+
+    if (!dbReport) {
+      throw new NotFoundException(
+        `Report not found for ID ${roomId}`
+      );
+    }
+
+    // DB 데이터를 ReportDetails 형식으로 변환
+    const details: ReportDetails & { summary?: string } = {
+      reportId: dbReport.reportId,
+      roomId: dbReport.roomId,
+      channelId: dbReport.channelId,
+      topic: dbReport.topic,
+      description: dbReport.description || undefined,
+      attendees: dbReport.attendees || [],
+      tags: dbReport.tags || [],
+      createdAt: dbReport.createdAt.toISOString(),
+      shareScope: (dbReport.shareScope as "CHANNEL" | "PRIVATE") || "CHANNEL",
+      uploadFileList: [],
+      summary: undefined,
+    };
+
+    return details;
   }
 
   async downloadFileFromS3(fileUrl: string): Promise<{

@@ -5,6 +5,7 @@ import {
   Delete,
   Param,
   Body,
+  Query,
   UseGuards,
   Request,
 } from "@nestjs/common";
@@ -30,14 +31,42 @@ export class RoomController {
     return this.roomService.getAllRooms();
   }
 
-  @Get(":roomId")
-  async getRoomById(@Param("roomId") roomId: string) {
-    return this.roomService.getRoomById(roomId);
+  /**
+   * 사용자가 접근 가능한 방 목록 조회
+   * - 전체 공개 방 (participantUserIds가 빈 배열)
+   * - 사용자 ID가 포함된 방
+   */
+  @Get("accessible/:channelId")
+  async getAccessibleRooms(
+    @Param("channelId") channelId: string,
+    @Request() req,
+  ) {
+    return this.roomService.getAccessibleRooms(req.user.id, channelId);
   }
 
+  // 정적 경로들 먼저 (topic, channel, team)
   @Get("topic/:topic")
   async getRoomByTopic(@Param("topic") topic: string) {
     return this.roomService.getRoomByTopic(topic);
+  }
+
+  @Get("channel/:channelId/search")
+  async searchRooms(
+    @Param("channelId") channelId: string,
+    @Query("keyword") keyword?: string,
+    @Query("tags") tags?: string | string[],
+  ) {
+    // tags는 단일 문자열 또는 배열로 올 수 있음
+    const tagArray = tags
+      ? (Array.isArray(tags) ? tags : [tags])
+      : [];
+    return this.roomService.searchRooms(channelId, keyword, tagArray);
+  }
+
+  @Get("channel/:channelId/tags")
+  async getChannelTags(@Param("channelId") channelId: string) {
+    const tags = await this.roomService.getTagsByChannel(channelId);
+    return { tags };
   }
 
   @Get("channel/:channelId")
@@ -45,9 +74,24 @@ export class RoomController {
     return this.roomService.getRoomsByChannelId(channelId);
   }
 
-  @Get("team/:teamId")
-  async getRoomsByTeam(@Param("teamId") teamId: string) {
-    return this.roomService.getRoomsByTeamId(teamId);
+  /**
+   * 사용자가 특정 방에 접근 가능한지 확인
+   */
+  @Get(":roomId/access")
+  async checkRoomAccess(@Param("roomId") roomId: string, @Request() req) {
+    const hasAccess = await this.roomService.checkRoomAccess(roomId, req.user.id);
+    return { hasAccess };
+  }
+
+  @Get(":roomId")
+  async getRoomById(@Param("roomId") roomId: string, @Request() req) {
+    return this.roomService.getRoomByIdWithAccessCheck(roomId, req.user.id);
+  }
+
+  // 동적 :roomId 경로들 (정적 경로 이후에 배치)
+  @Get(":roomId/role")
+  async checkUserRole(@Param("roomId") roomId: string, @Request() req) {
+    return this.roomService.checkUserRole(roomId, req.user.id);
   }
 
   @Delete(":roomId")
@@ -58,18 +102,12 @@ export class RoomController {
 
   @Post(":roomId/join")
   async joinRoom(@Param("roomId") roomId: string, @Request() req) {
-    // userId 대신 nickname을 저장
-    return this.roomService.addAttendee(roomId, req.user.username);
-  }
-
-  @Get(":roomId/role")
-  async checkUserRole(@Param("roomId") roomId: string, @Request() req) {
-    return this.roomService.checkUserRole(roomId, req.user.id);
+    return this.roomService.addAttendeeWithAccessCheck(roomId, req.user.id, req.user.nickName);
   }
 
   @Post(":roomId/leave")
   async leaveRoom(@Param("roomId") roomId: string, @Request() req) {
-    await this.roomService.leaveRoom(roomId, req.user.username);
+    await this.roomService.leaveRoom(roomId, req.user.nickName);
     return { message: "Left room successfully" };
   }
 }

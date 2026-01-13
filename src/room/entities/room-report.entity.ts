@@ -7,7 +7,6 @@ import {
   BeforeInsert,
 } from "typeorm";
 import { Channel } from "../../channel/entities/channel.entity";
-import { Team } from "../../channel/entities/team.entity";
 
 export enum ReportScope {
   PUBLIC = "PUBLIC",
@@ -30,6 +29,9 @@ export class RoomReport {
   @Column("text", { array: true, default: [] })
   attendees: string[];
 
+  @Column("text", { array: true, default: [] })
+  tags: string[];
+
   @Column({ type: "timestamp with time zone" })
   createdAt: Date;
 
@@ -50,8 +52,8 @@ export class RoomReport {
   @Column({ type: "uuid", nullable: false })
   channelId: string;
 
-  @Column({ type: "uuid", nullable: true })
-  teamId: string | null;
+  @Column("uuid", { array: true, default: [] })
+  participantUserIds: string[];  // 빈 배열 = 전체 공개, 값이 있으면 해당 유저만 접근 가능
 
   @BeforeInsert()
   setDefaults() {
@@ -60,6 +62,9 @@ export class RoomReport {
     }
     if (!this.attendees) {
       this.attendees = [];
+    }
+    if (!this.tags) {
+      this.tags = [];
     }
     if (!this.specialAuth) {
       this.specialAuth = [];
@@ -72,7 +77,5 @@ export class RoomReport {
   @JoinColumn({ name: "channelId" })
   channel: Channel;
 
-  @ManyToOne(() => Team, (team) => team.reports, { onDelete: "SET NULL" })
-  @JoinColumn({ name: "teamId" })
-  team: Team | null;
+  // participantUserIds는 UUID 배열이므로 ManyToOne 관계 대신 배열로 관리
 }
