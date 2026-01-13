@@ -30,7 +30,7 @@ export class ChannelMember {
   @Column({ type: "enum", enum: ChannelRole, default: ChannelRole.MEMBER })
   role: ChannelRole;
 
-  @Column({ type: "timestamp with time zone" })
+  @Column({ type: "timestamp with time zone", default: () => "CURRENT_TIMESTAMP" })
   joinedAt: Date;
 
   @BeforeInsert()

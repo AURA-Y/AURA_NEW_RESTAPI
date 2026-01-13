@@ -7,6 +7,7 @@ import { RoomModule } from './room/room.module';
 import { ChannelModule } from './channel/channel.module';
 import { SseModule } from './sse/sse.module';
 import { CalendarModule } from './calendar/calendar.module';
+import { RecordingsModule } from './recordings/recordings.module';
 import { User } from './auth/entities/user.entity';
 import { Channel } from './channel/entities/channel.entity';
 import { ChannelMember } from './channel/entities/channel-member.entity';
@@ -45,8 +46,8 @@ import {
           RoomReport,
           File,
         ],
-        // 로컬 개발 시 자동 스키마 동기화 (production에서는 false 권장)
-        synchronize: configService.get<string>('NODE_ENV') !== 'production',
+        // Prisma가 스키마를 관리하므로 TypeORM synchronize 비활성화
+        synchronize: false,
         logging: configService.get<string>('NODE_ENV') !== 'production',
         ssl:
           configService.get<string>('DB_SSL') === 'true'
@@ -60,6 +61,7 @@ import {
     ChannelModule,
     SseModule,
     CalendarModule,
+    RecordingsModule,
   ],
   controllers: [HealthController],
 })

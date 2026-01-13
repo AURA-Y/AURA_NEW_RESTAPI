@@ -23,7 +23,7 @@ export class File {
   @Column({ type: "integer" })
   fileSize: number;
 
-  @Column({ type: "timestamp with time zone" })
+  @Column({ type: "timestamp with time zone", default: () => "CURRENT_TIMESTAMP" })
   createdAt: Date;
 
   @Column({ type: "varchar", length: 255 })

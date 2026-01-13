@@ -28,7 +28,7 @@ export class Room {
   @Column({ type: "varchar", length: 255, unique: true })
   roomShareLink: string;
 
-  @Column({ type: "timestamp with time zone" })
+  @Column({ type: "timestamp with time zone", default: () => "CURRENT_TIMESTAMP" })
   createdAt: Date;
 
   @Column({ type: "uuid", nullable: false })
