@@ -64,6 +64,8 @@ export class ReportsService {
     private roomRepository: Repository<Room>,
     @InjectRepository(ChannelMember)
     private channelMemberRepository: Repository<ChannelMember>,
+    @InjectRepository(File)
+    private fileRepository: Repository<File>,
     private configService: ConfigService
   ) {
     this.bucketName =

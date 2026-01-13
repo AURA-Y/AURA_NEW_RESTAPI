@@ -9,7 +9,7 @@ import { User } from "../auth/entities/user.entity";
 import { ChannelMember } from "../channel/entities/channel-member.entity";
 
 @Module({
-  imports: [TypeOrmModule.forFeature([RoomReport, Room, User, ChannelMember])],
+  imports: [TypeOrmModule.forFeature([RoomReport, Room, File, User, ChannelMember])],
   controllers: [ReportsController],
   providers: [ReportsService],
   exports: [ReportsService],
