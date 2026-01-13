@@ -114,7 +114,8 @@ model Room {
 
   // 회의 데이터
   attendees String[] @default([])
-  token     String? @db.Text // 미디어 서버 접속용 토큰
+  token     String?  @db.Text // 미디어 서버 접속용 토큰
+  tags      String[] @default([]) // 회의 태그 (최대 10개)
 
   // 파일
   files  File[] // 회의 중 업로드된 파일 리스트
@@ -126,6 +127,7 @@ model RoomReport {
   topic       String   @db.VarChar(255)
   description String?  @db.Text
   attendees   String[] @default([])
+  tags        String[] @default([]) // 회의 태그 (Room에서 복사)
   createdAt   DateTime @default(now())
 
   // 권한 범위 설정

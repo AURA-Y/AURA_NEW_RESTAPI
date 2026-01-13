@@ -57,6 +57,11 @@ export class CreateReportDto {
   attendees: string[];
 
   @IsOptional()
+  @IsArray()
+  @IsString({ each: true })
+  tags?: string[];
+
+  @IsOptional()
   @IsISO8601()
   createdAt?: string;
 

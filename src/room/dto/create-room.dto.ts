@@ -5,6 +5,8 @@ import {
   IsUUID,
   IsArray,
   MaxLength,
+  ArrayMaxSize,
+  Matches,
 } from 'class-validator';
 
 export class CreateRoomDto {
@@ -46,4 +48,12 @@ export class CreateRoomDto {
   @IsString()
   @IsOptional()
   token?: string;
+
+  @IsArray()
+  @IsOptional()
+  @ArrayMaxSize(10, { message: '태그는 최대 10개까지 가능합니다' })
+  @IsString({ each: true })
+  @MaxLength(20, { each: true, message: '각 태그는 20자 이내여야 합니다' })
+  @Matches(/^[a-zA-Z0-9가-힣_-]+$/, { each: true, message: '태그는 특수문자 없이 입력해주세요' })
+  tags?: string[];
 }
