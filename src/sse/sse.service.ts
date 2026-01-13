@@ -5,7 +5,6 @@ import { Subject } from 'rxjs';
 import { User } from '../auth/entities/user.entity';
 import { Room } from '../room/entities/room.entity';
 import { RoomReport } from '../room/entities/room-report.entity';
-import { File } from '../room/entities/file.entity';
 import { ReportsService } from '../reports/reports.service';
 
 export interface NotificationEvent {
@@ -25,8 +24,6 @@ export class SseService {
     private roomRepository: Repository<Room>,
     @InjectRepository(RoomReport)
     private roomReportRepository: Repository<RoomReport>,
-    @InjectRepository(File)
-    private fileRepository: Repository<File>,
     private reportsService: ReportsService,
   ) {}
 
@@ -201,16 +198,14 @@ export class SseService {
     return { notified, failed };
   }
 
-  // Room 종료 시 Room, RoomReport, File, S3 삭제
+  // Room 종료 시 Room, RoomReport, S3 삭제
   async cleanupRoom(roomId: string): Promise<{
     roomDeleted: boolean;
     reportDeleted: boolean;
-    filesDeleted: number;
     s3Deleted: boolean;
   }> {
     let roomDeleted = false;
     let reportDeleted = false;
-    let filesDeleted = 0;
     let s3Deleted = false;
 
     try {
@@ -223,17 +218,12 @@ export class SseService {
         console.error(`[Cleanup] S3 deletion failed for room ${roomId}:`, error.message);
       }
 
-      // 2. File 삭제 (DB)
-      const fileResult = await this.fileRepository.delete({ roomId });
-      filesDeleted = fileResult.affected || 0;
-      console.log(`[Cleanup] Files deleted: ${filesDeleted} for room: ${roomId}`);
-
-      // 3. RoomReport 삭제 (DB)
+      // 2. RoomReport 삭제 (DB)
       const reportResult = await this.roomReportRepository.delete({ roomId });
       reportDeleted = (reportResult.affected || 0) > 0;
       console.log(`[Cleanup] Report deleted: ${reportDeleted} for room: ${roomId}`);
 
-      // 4. Room 삭제 (DB)
+      // 3. Room 삭제 (DB)
       const roomResult = await this.roomRepository.delete({ roomId });
       roomDeleted = (roomResult.affected || 0) > 0;
       console.log(`[Cleanup] Room deleted: ${roomDeleted} for room: ${roomId}`);
@@ -242,6 +232,6 @@ export class SseService {
       console.error(`[Cleanup] Error cleaning up room ${roomId}:`, error.message);
     }
 
-    return { roomDeleted, reportDeleted, filesDeleted, s3Deleted };
+    return { roomDeleted, reportDeleted, s3Deleted };
   }
 }

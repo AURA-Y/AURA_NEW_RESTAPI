@@ -8,7 +8,6 @@ import { InjectRepository } from "@nestjs/typeorm";
 import { Repository, In } from "typeorm";
 import { RoomReport } from "../room/entities/room-report.entity";
 import { Room } from "../room/entities/room.entity";
-import { File } from "../room/entities/file.entity";
 import { User } from "../auth/entities/user.entity";
 import { ChannelMember } from "../channel/entities/channel-member.entity";
 import {
@@ -64,8 +63,6 @@ export class ReportsService {
     private roomRepository: Repository<Room>,
     @InjectRepository(ChannelMember)
     private channelMemberRepository: Repository<ChannelMember>,
-    @InjectRepository(File)
-    private fileRepository: Repository<File>,
     private configService: ConfigService
   ) {
     this.bucketName =
@@ -470,7 +467,7 @@ export class ReportsService {
     }
   }
 
-  // 보고서 생성: DB 메타 + S3 JSON 기록 + File 엔티티 생성
+  // 보고서 생성: DB 메타 + S3 JSON 기록
   async createReport(payload: {
     roomId: string;
     reportId?: string;
@@ -509,24 +506,6 @@ export class ReportsService {
       createdAt: new Date(createdAt),
     });
     await this.reportsRepository.save(meta);
-
-    // File 엔티티 생성 (Room과 연결)
-    if (payload.uploadFileList && payload.uploadFileList.length > 0) {
-      const fileEntities = payload.uploadFileList.map((file) =>
-        this.fileRepository.create({
-          fileId: file.fileId || randomUUID(),
-          fileName: file.fileName,
-          fileUrl: file.fileUrl,
-          fileSize: file.fileSize,
-          roomId: payload.roomId,
-          createdAt: new Date(),
-        })
-      );
-      await this.fileRepository.save(fileEntities);
-      this.logger.log(
-        `[createReport] ${fileEntities.length}개 파일 DB 저장 완료 - roomId: ${payload.roomId}`
-      );
-    }
 
     const details: ReportDetails = {
       reportId,

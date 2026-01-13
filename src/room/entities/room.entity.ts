@@ -3,13 +3,11 @@ import {
   PrimaryColumn,
   Column,
   ManyToOne,
-  OneToMany,
   JoinColumn,
   BeforeInsert,
 } from "typeorm";
 import { User } from "../../auth/entities/user.entity";
 import { Channel } from "../../channel/entities/channel.entity";
-import { File } from "./file.entity";
 
 @Entity("Room")
 export class Room {
@@ -25,10 +23,10 @@ export class Room {
   @Column({ type: "varchar", length: 50, nullable: true })
   roomPassword: string | null;
 
-  @Column({ type: "varchar", length: 255, unique: true, default: () => "gen_random_uuid()" })
+  @Column({ type: "varchar", length: 255, unique: true })
   roomShareLink: string;
 
-  @Column({ type: "timestamp with time zone", default: () => "CURRENT_TIMESTAMP" })
+  @Column({ type: "timestamp with time zone", default: () => "NOW()" })
   createdAt: Date;
 
   @Column({ type: "uuid", nullable: false })
@@ -49,6 +47,17 @@ export class Room {
   @Column("text", { array: true, default: [] })
   tags: string[];
 
+  // 파일 (JSON 형태로 저장)
+  // [{fileId, fileName, fileUrl, fileSize, createdAt}, ...]
+  @Column({ type: "jsonb", default: [] })
+  uploadFileList: Array<{
+    fileId: string;
+    fileName: string;
+    fileUrl: string;
+    fileSize: number;
+    createdAt: string;
+  }>;
+
   @BeforeInsert()
   setDefaults() {
     if (!this.createdAt) {
@@ -60,6 +69,9 @@ export class Room {
     if (!this.tags) {
       this.tags = [];
     }
+    if (!this.uploadFileList) {
+      this.uploadFileList = [];
+    }
   }
 
   @ManyToOne(() => User, (user) => user.createdRooms, { onDelete: "CASCADE" })
@@ -69,11 +81,6 @@ export class Room {
   @ManyToOne(() => Channel, (channel) => channel.rooms, { onDelete: "CASCADE" })
   @JoinColumn({ name: "channelId" })
   channel: Channel | null;
-
-  // participantUserIds는 UUID 배열이므로 ManyToOne 관계 대신 배열로 관리
-
-  @OneToMany(() => File, (file) => file.room)
-  files: File[];
 
   // RoomReport와의 FK 관계 제거됨 - Room 삭제해도 Report는 유지됨
 }

@@ -17,7 +17,6 @@ import { HealthController } from './health/health.controller';
 import {
   Room,
   RoomReport,
-  File,
 } from './room/entities';
 
 
@@ -44,7 +43,6 @@ import {
           JoinRequest,
           Room,
           RoomReport,
-          File,
         ],
         // Prisma가 스키마를 관리하므로 TypeORM synchronize 비활성화
         synchronize: false,
