@@ -340,15 +340,24 @@ export class CalendarService implements OnModuleInit {
     let end: calendar_v3.Schema$EventDateTime;
 
     if (time) {
+      // 시간이 있는 일정
       const startDateTime = `${date}T${time}:00`;
       const endDate = new Date(`${date}T${time}:00`);
       endDate.setMinutes(endDate.getMinutes() + durationMinutes);
 
+      // 로컬 시간 형식으로 변환 (YYYY-MM-DDTHH:mm:ss)
+      const endDateStr = `${endDate.getFullYear()}-${String(endDate.getMonth() + 1).padStart(2, '0')}-${String(endDate.getDate()).padStart(2, '0')}T${String(endDate.getHours()).padStart(2, '0')}:${String(endDate.getMinutes()).padStart(2, '0')}:00`;
+
       start = { dateTime: startDateTime, timeZone: 'Asia/Seoul' };
-      end = { dateTime: endDate.toISOString().slice(0, 19), timeZone: 'Asia/Seoul' };
+      end = { dateTime: endDateStr, timeZone: 'Asia/Seoul' };
     } else {
+      // 종일 일정: end는 다음 날이어야 함
+      const endDateObj = new Date(date);
+      endDateObj.setDate(endDateObj.getDate() + 1);
+      const endDateStr = endDateObj.toISOString().split('T')[0];
+
       start = { date };
-      end = { date };
+      end = { date: endDateStr };
     }
 
     const response = await this.calendar.events.insert({
