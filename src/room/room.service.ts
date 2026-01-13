@@ -41,7 +41,7 @@ export class RoomService {
       roomDescription: data.roomDescription || null,
       masterId: data.masterId,
       channelId: data.channelId,
-      teamIds: data.teamIds || [],  // 빈 배열 = 전체 공개
+      participantUserIds: data.participantUserIds || [],  // 빈 배열 = 전체 공개
       roomPassword: data.roomPassword || null,
       roomShareLink: this.generateShareLink(data.roomId),
       attendees: data.attendees || [],
@@ -208,21 +208,9 @@ export class RoomService {
   }
 
   /**
-   * 팀 ID로 해당 팀이 포함된 방 조회 (teamIds 배열에 포함된 경우)
-   */
-  async getRoomsByTeamId(teamId: string): Promise<Room[]> {
-    return this.roomRepository
-      .createQueryBuilder('room')
-      .leftJoinAndSelect('room.master', 'master')
-      .where(':teamId = ANY(room.teamIds)', { teamId })
-      .orderBy('room.createdAt', 'DESC')
-      .getMany();
-  }
-
-  /**
    * 사용자가 접근 가능한 방 목록 조회
-   * - teamIds가 빈 배열이면 전체 공개 (채널 멤버면 접근 가능)
-   * - teamIds가 있으면 해당 팀 멤버만 접근 가능
+   * - participantUserIds가 빈 배열이면 전체 공개 (채널 멤버면 접근 가능)
+   * - participantUserIds가 있으면 해당 유저만 접근 가능
    */
   async getAccessibleRooms(userId: string, channelId: string): Promise<Room[]> {
     // 1. 사용자의 채널 멤버십 조회
@@ -235,25 +223,19 @@ export class RoomService {
     }
 
     // 2. 접근 가능한 회의 조회
+    // participantUserIds가 빈 배열이거나, 사용자 ID가 포함된 경우
     const queryBuilder = this.roomRepository
       .createQueryBuilder('room')
       .leftJoinAndSelect('room.master', 'master')
       .leftJoinAndSelect('room.channel', 'channel')
-      .where('room.channelId = :channelId', { channelId });
-
-    // teamIds가 빈 배열이거나, 사용자의 팀이 포함된 경우
-    if (membership.teamId) {
-      queryBuilder.andWhere(
-        '(room.teamIds = :emptyArray OR :userTeamId = ANY(room.teamIds))',
+      .where('room.channelId = :channelId', { channelId })
+      .andWhere(
+        '(room.participantUserIds = :emptyArray OR :userId = ANY(room.participantUserIds))',
         {
           emptyArray: '{}',
-          userTeamId: membership.teamId
+          userId
         }
       );
-    } else {
-      // 팀에 소속되지 않은 사용자는 전체 공개 방만 접근 가능
-      queryBuilder.andWhere('room.teamIds = :emptyArray', { emptyArray: '{}' });
-    }
 
     return queryBuilder
       .orderBy('room.createdAt', 'DESC')
@@ -266,7 +248,7 @@ export class RoomService {
   async checkRoomAccess(roomId: string, userId: string): Promise<boolean> {
     const room = await this.roomRepository.findOne({
       where: { roomId },
-      select: ['roomId', 'channelId', 'teamIds']
+      select: ['roomId', 'channelId', 'participantUserIds']
     });
 
     if (!room) return false;
@@ -278,14 +260,12 @@ export class RoomService {
 
     if (!membership) return false;
 
-    // 전체 공개인 경우 (teamIds가 빈 배열)
-    if (!room.teamIds || room.teamIds.length === 0) {
+    // 전체 공개인 경우 (participantUserIds가 빈 배열)
+    if (!room.participantUserIds || room.participantUserIds.length === 0) {
       return true;
     }
 
-    // 팀 제한인 경우 - 사용자의 팀이 포함되어 있는지 확인
-    if (!membership.teamId) return false;
-
-    return room.teamIds.includes(membership.teamId);
+    // 유저 제한인 경우 - 사용자 ID가 포함되어 있는지 확인
+    return room.participantUserIds.includes(userId);
   }
 }

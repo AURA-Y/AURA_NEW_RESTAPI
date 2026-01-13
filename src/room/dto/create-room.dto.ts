@@ -38,7 +38,7 @@ export class CreateRoomDto {
   @IsArray()
   @IsUUID('4', { each: true })
   @IsOptional()
-  teamIds?: string[];  // 빈 배열 = 전체 공개
+  participantUserIds?: string[];  // 빈 배열 = 전체 공개, 값이 있으면 해당 유저만 접근 가능
 
   @IsArray()
   @IsOptional()

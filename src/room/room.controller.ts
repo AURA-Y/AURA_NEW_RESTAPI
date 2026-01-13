@@ -32,8 +32,8 @@ export class RoomController {
 
   /**
    * 사용자가 접근 가능한 방 목록 조회
-   * - 전체 공개 방 (teamIds가 빈 배열)
-   * - 사용자의 팀이 포함된 방
+   * - 전체 공개 방 (participantUserIds가 빈 배열)
+   * - 사용자 ID가 포함된 방
    */
   @Get("accessible/:channelId")
   async getAccessibleRooms(
@@ -51,11 +51,6 @@ export class RoomController {
   @Get("channel/:channelId")
   async getRoomsByChannel(@Param("channelId") channelId: string) {
     return this.roomService.getRoomsByChannelId(channelId);
-  }
-
-  @Get("team/:teamId")
-  async getRoomsByTeam(@Param("teamId") teamId: string) {
-    return this.roomService.getRoomsByTeamId(teamId);
   }
 
   /**

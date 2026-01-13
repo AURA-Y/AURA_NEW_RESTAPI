@@ -50,7 +50,7 @@ export class RoomReport {
   channelId: string;
 
   @Column("uuid", { array: true, default: [] })
-  teamIds: string[];
+  participantUserIds: string[];  // 빈 배열 = 전체 공개, 값이 있으면 해당 유저만 접근 가능
 
   @BeforeInsert()
   setDefaults() {
@@ -71,5 +71,5 @@ export class RoomReport {
   @JoinColumn({ name: "channelId" })
   channel: Channel;
 
-  // teamIds는 UUID 배열이므로 ManyToOne 관계 대신 배열로 관리
+  // participantUserIds는 UUID 배열이므로 ManyToOne 관계 대신 배열로 관리
 }

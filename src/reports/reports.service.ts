@@ -141,7 +141,7 @@ export class ReportsService {
   async checkReportAccess(reportId: string, userId: string): Promise<boolean> {
     const report = await this.reportsRepository.findOne({
       where: { reportId },
-      select: ['reportId', 'channelId', 'teamIds']
+      select: ['reportId', 'channelId', 'participantUserIds']
     });
 
     if (!report) return false;
@@ -153,15 +153,13 @@ export class ReportsService {
 
     if (!membership) return false;
 
-    // 전체 공개인 경우 (teamIds가 빈 배열)
-    if (!report.teamIds || report.teamIds.length === 0) {
+    // 전체 공개인 경우 (participantUserIds가 빈 배열)
+    if (!report.participantUserIds || report.participantUserIds.length === 0) {
       return true;
     }
 
-    // 팀 제한인 경우 - 사용자의 팀이 포함되어 있는지 확인
-    if (!membership.teamId) return false;
-
-    return report.teamIds.includes(membership.teamId);
+    // 유저 제한인 경우 - 사용자 ID가 포함되어 있는지 확인
+    return report.participantUserIds.includes(userId);
   }
 
   /**
@@ -195,8 +193,8 @@ export class ReportsService {
 
   /**
    * 사용자가 접근 가능한 회의록 목록 조회
-   * - teamIds가 빈 배열이면 전체 공개 (채널 멤버면 접근 가능)
-   * - teamIds가 있으면 해당 팀 멤버만 접근 가능
+   * - participantUserIds가 빈 배열이면 전체 공개 (채널 멤버면 접근 가능)
+   * - participantUserIds가 있으면 해당 유저만 접근 가능
    */
   async getAccessibleReports(userId: string, channelId: string): Promise<RoomReport[]> {
     // 1. 사용자의 채널 멤버십 조회
@@ -209,23 +207,17 @@ export class ReportsService {
     }
 
     // 2. 접근 가능한 회의록 조회
+    // participantUserIds가 빈 배열이거나, 사용자 ID가 포함된 경우
     const queryBuilder = this.reportsRepository
       .createQueryBuilder('report')
-      .where('report.channelId = :channelId', { channelId });
-
-    // teamIds가 빈 배열이거나, 사용자의 팀이 포함된 경우
-    if (membership.teamId) {
-      queryBuilder.andWhere(
-        '(report.teamIds = :emptyArray OR :userTeamId = ANY(report.teamIds))',
+      .where('report.channelId = :channelId', { channelId })
+      .andWhere(
+        '(report.participantUserIds = :emptyArray OR :userId = ANY(report.participantUserIds))',
         {
           emptyArray: '{}',
-          userTeamId: membership.teamId
+          userId
         }
       );
-    } else {
-      // 팀에 소속되지 않은 사용자는 전체 공개 회의록만 접근 가능
-      queryBuilder.andWhere('report.teamIds = :emptyArray', { emptyArray: '{}' });
-    }
 
     return queryBuilder
       .orderBy('report.createdAt', 'DESC')
@@ -258,21 +250,15 @@ export class ReportsService {
       const queryBuilder = this.reportsRepository
         .createQueryBuilder('report')
         .where('report.channelId = :channelId', { channelId: membership.channelId })
-        .andWhere(':nickName = ANY(report.attendees)', { nickName: user.nickName });
-
-      // teamIds 필터링: 빈 배열이거나 사용자의 팀이 포함된 경우
-      if (membership.teamId) {
-        queryBuilder.andWhere(
-          '(report.teamIds = :emptyArray OR :userTeamId = ANY(report.teamIds))',
+        .andWhere(':nickName = ANY(report.attendees)', { nickName: user.nickName })
+        // participantUserIds 필터링: 빈 배열이거나 사용자 ID가 포함된 경우
+        .andWhere(
+          '(report.participantUserIds = :emptyArray OR :userId = ANY(report.participantUserIds))',
           {
             emptyArray: '{}',
-            userTeamId: membership.teamId
+            userId
           }
         );
-      } else {
-        // 팀에 소속되지 않은 사용자는 전체 공개 회의록만 접근 가능
-        queryBuilder.andWhere('report.teamIds = :emptyArray', { emptyArray: '{}' });
-      }
 
       const reports = await queryBuilder.getMany();
       allAccessibleReports.push(...reports);
@@ -449,14 +435,14 @@ export class ReportsService {
     const reportId = payload.reportId || payload.roomId;
     const createdAt = payload.createdAt || new Date().toISOString();
 
-    // Room에서 teamIds 가져오기 (회의록도 동일한 접근 제어 적용)
-    let teamIds: string[] = [];
+    // Room에서 participantUserIds 가져오기 (회의록도 동일한 접근 제어 적용)
+    let participantUserIds: string[] = [];
     const room = await this.roomRepository.findOne({
       where: { roomId: payload.roomId },
-      select: ['roomId', 'teamIds']
+      select: ['roomId', 'participantUserIds']
     });
-    if (room && room.teamIds) {
-      teamIds = room.teamIds;
+    if (room && room.participantUserIds) {
+      participantUserIds = room.participantUserIds;
     }
 
     const meta = this.reportsRepository.create({
@@ -466,7 +452,7 @@ export class ReportsService {
       topic: payload.topic,
       description: payload.description || null,
       attendees: payload.attendees,
-      teamIds,  // Room에서 복사한 teamIds
+      participantUserIds,  // Room에서 복사한 participantUserIds
       createdAt: new Date(createdAt),
     });
     await this.reportsRepository.save(meta);

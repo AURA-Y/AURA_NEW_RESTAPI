@@ -195,8 +195,8 @@ export class ReportsController {
 
   /**
    * 사용자가 접근 가능한 회의록 목록 조회
-   * - 전체 공개 회의록 (teamIds가 빈 배열)
-   * - 사용자의 팀이 포함된 회의록
+   * - 전체 공개 회의록 (participantUserIds가 빈 배열)
+   * - 사용자 ID가 포함된 회의록
    */
   @Get("accessible/:channelId")
   @UseGuards(JwtAuthGuard)
