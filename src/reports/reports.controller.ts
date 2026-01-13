@@ -231,21 +231,25 @@ export class ReportsController {
     return new StreamableFile(stream);
   }
 
-  // S3에서 리포트 상세 정보 조회
+  // S3에서 리포트 상세 정보 조회 (접근 권한 확인)
   @Get(":id/details")
   @UseGuards(JwtAuthGuard)
-  async getReportDetails(@Param("id") id: string): Promise<any> {
-    return this.reportsService.getReportDetailsFromS3(id);
+  async getReportDetails(@Param("id") id: string, @Req() req: Request): Promise<any> {
+    const userId = (req as any).user?.id;
+    if (!userId) {
+      throw new NotFoundException("User not found");
+    }
+    return this.reportsService.getReportDetailsFromS3WithAccessCheck(id, userId);
   }
 
-  // 단일 리포트 조회 (DB)
+  // 단일 리포트 조회 (DB) - 접근 권한 확인
   @Get(":id")
   @UseGuards(JwtAuthGuard)
-  async getReportById(@Param("id") id: string): Promise<RoomReport> {
-    const report = await this.reportsService.findById(id);
-    if (!report) {
-      throw new NotFoundException(`Report not found: ${id}`);
+  async getReportById(@Param("id") id: string, @Req() req: Request): Promise<RoomReport> {
+    const userId = (req as any).user?.id;
+    if (!userId) {
+      throw new NotFoundException("User not found");
     }
-    return report;
+    return this.reportsService.findByIdWithAccessCheck(id, userId);
   }
 }

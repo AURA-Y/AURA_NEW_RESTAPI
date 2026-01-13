@@ -68,8 +68,8 @@ export class RoomController {
   }
 
   @Get(":roomId")
-  async getRoomById(@Param("roomId") roomId: string) {
-    return this.roomService.getRoomById(roomId);
+  async getRoomById(@Param("roomId") roomId: string, @Request() req) {
+    return this.roomService.getRoomByIdWithAccessCheck(roomId, req.user.id);
   }
 
   @Delete(":roomId")
@@ -80,7 +80,7 @@ export class RoomController {
 
   @Post(":roomId/join")
   async joinRoom(@Param("roomId") roomId: string, @Request() req) {
-    return this.roomService.addAttendee(roomId, req.user.nickName);
+    return this.roomService.addAttendeeWithAccessCheck(roomId, req.user.id, req.user.nickName);
   }
 
   @Get(":roomId/role")

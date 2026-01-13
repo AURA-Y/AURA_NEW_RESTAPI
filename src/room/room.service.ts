@@ -70,6 +70,21 @@ export class RoomService {
     return room;
   }
 
+  /**
+   * 접근 권한을 확인한 후 방 정보 조회
+   */
+  async getRoomByIdWithAccessCheck(roomId: string, userId: string): Promise<Room> {
+    const room = await this.getRoomById(roomId);
+
+    // 접근 권한 확인
+    const hasAccess = await this.checkRoomAccess(roomId, userId);
+    if (!hasAccess) {
+      throw new ForbiddenException('이 회의에 접근할 권한이 없습니다');
+    }
+
+    return room;
+  }
+
   async getRoomByTopic(roomTopic: string): Promise<{ roomId: string }> {
     const room = await this.roomRepository.findOne({
       where: { roomTopic },
@@ -146,6 +161,19 @@ export class RoomService {
     }
 
     return room;
+  }
+
+  /**
+   * 접근 권한을 확인한 후 참가자 추가
+   */
+  async addAttendeeWithAccessCheck(roomId: string, userId: string, nickName: string): Promise<Room> {
+    // 접근 권한 확인
+    const hasAccess = await this.checkRoomAccess(roomId, userId);
+    if (!hasAccess) {
+      throw new ForbiddenException('이 회의에 참여할 권한이 없습니다');
+    }
+
+    return this.addAttendee(roomId, nickName);
   }
 
   async checkUserRole(

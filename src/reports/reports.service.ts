@@ -136,6 +136,64 @@ export class ReportsService {
   }
 
   /**
+   * 사용자가 특정 회의록에 접근 가능한지 확인
+   */
+  async checkReportAccess(reportId: string, userId: string): Promise<boolean> {
+    const report = await this.reportsRepository.findOne({
+      where: { reportId },
+      select: ['reportId', 'channelId', 'teamIds']
+    });
+
+    if (!report) return false;
+
+    // 채널 멤버십 확인
+    const membership = await this.channelMemberRepository.findOne({
+      where: { userId, channelId: report.channelId }
+    });
+
+    if (!membership) return false;
+
+    // 전체 공개인 경우 (teamIds가 빈 배열)
+    if (!report.teamIds || report.teamIds.length === 0) {
+      return true;
+    }
+
+    // 팀 제한인 경우 - 사용자의 팀이 포함되어 있는지 확인
+    if (!membership.teamId) return false;
+
+    return report.teamIds.includes(membership.teamId);
+  }
+
+  /**
+   * 접근 권한을 확인한 후 리포트 조회
+   */
+  async findByIdWithAccessCheck(reportId: string, userId: string): Promise<RoomReport> {
+    const report = await this.findById(reportId);
+    if (!report) {
+      throw new NotFoundException(`Report not found: ${reportId}`);
+    }
+
+    const hasAccess = await this.checkReportAccess(reportId, userId);
+    if (!hasAccess) {
+      throw new ForbiddenException('이 회의록에 접근할 권한이 없습니다');
+    }
+
+    return report;
+  }
+
+  /**
+   * 접근 권한을 확인한 후 S3에서 리포트 상세 조회
+   */
+  async getReportDetailsFromS3WithAccessCheck(reportId: string, userId: string): Promise<ReportDetails & { summary?: string }> {
+    const hasAccess = await this.checkReportAccess(reportId, userId);
+    if (!hasAccess) {
+      throw new ForbiddenException('이 회의록에 접근할 권한이 없습니다');
+    }
+
+    return this.getReportDetailsFromS3(reportId);
+  }
+
+  /**
    * 사용자가 접근 가능한 회의록 목록 조회
    * - teamIds가 빈 배열이면 전체 공개 (채널 멤버면 접근 가능)
    * - teamIds가 있으면 해당 팀 멤버만 접근 가능
@@ -183,15 +241,51 @@ export class ReportsService {
       return [];
     }
 
-    const reportIds = await this.getAccessibleReportIds(
-      user.userId,
-      user.nickName
-    );
-    if (reportIds.length === 0) {
+    // 1. 사용자가 참여한 모든 채널의 멤버십 조회
+    const memberships = await this.channelMemberRepository.find({
+      where: { userId },
+      select: ['channelId', 'teamId']
+    });
+
+    if (memberships.length === 0) {
       return [];
     }
 
-    return this.findByIds(reportIds);
+    // 2. 각 채널에서 접근 가능한 회의록 조회
+    const allAccessibleReports: RoomReport[] = [];
+
+    for (const membership of memberships) {
+      const queryBuilder = this.reportsRepository
+        .createQueryBuilder('report')
+        .where('report.channelId = :channelId', { channelId: membership.channelId })
+        .andWhere(':nickName = ANY(report.attendees)', { nickName: user.nickName });
+
+      // teamIds 필터링: 빈 배열이거나 사용자의 팀이 포함된 경우
+      if (membership.teamId) {
+        queryBuilder.andWhere(
+          '(report.teamIds = :emptyArray OR :userTeamId = ANY(report.teamIds))',
+          {
+            emptyArray: '{}',
+            userTeamId: membership.teamId
+          }
+        );
+      } else {
+        // 팀에 소속되지 않은 사용자는 전체 공개 회의록만 접근 가능
+        queryBuilder.andWhere('report.teamIds = :emptyArray', { emptyArray: '{}' });
+      }
+
+      const reports = await queryBuilder.getMany();
+      allAccessibleReports.push(...reports);
+    }
+
+    // 중복 제거 및 정렬
+    const uniqueReports = Array.from(
+      new Map(allAccessibleReports.map(r => [r.reportId, r])).values()
+    );
+
+    return uniqueReports.sort((a, b) =>
+      new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
+    );
   }
 
   async create(reportData: Partial<RoomReport>): Promise<RoomReport> {
@@ -355,6 +449,16 @@ export class ReportsService {
     const reportId = payload.reportId || payload.roomId;
     const createdAt = payload.createdAt || new Date().toISOString();
 
+    // Room에서 teamIds 가져오기 (회의록도 동일한 접근 제어 적용)
+    let teamIds: string[] = [];
+    const room = await this.roomRepository.findOne({
+      where: { roomId: payload.roomId },
+      select: ['roomId', 'teamIds']
+    });
+    if (room && room.teamIds) {
+      teamIds = room.teamIds;
+    }
+
     const meta = this.reportsRepository.create({
       reportId,
       roomId: payload.roomId,
@@ -362,6 +466,7 @@ export class ReportsService {
       topic: payload.topic,
       description: payload.description || null,
       attendees: payload.attendees,
+      teamIds,  // Room에서 복사한 teamIds
       createdAt: new Date(createdAt),
     });
     await this.reportsRepository.save(meta);

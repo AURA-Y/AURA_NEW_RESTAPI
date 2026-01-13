@@ -28,8 +28,8 @@ export class CreateRoomDto {
   roomPassword?: string;
 
   @IsUUID()
-  @IsNotEmpty({ message: '방장 ID를 입력해주세요' })
-  masterId: string;
+  @IsOptional()  // 컨트롤러에서 req.user.id로 설정
+  masterId?: string;
 
   @IsUUID()
   @IsNotEmpty({ message: '채널 ID 미입력' })
