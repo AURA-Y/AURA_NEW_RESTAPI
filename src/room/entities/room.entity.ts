@@ -9,7 +9,6 @@ import {
 } from "typeorm";
 import { User } from "../../auth/entities/user.entity";
 import { Channel } from "../../channel/entities/channel.entity";
-import { Team } from "../../channel/entities/team.entity";
 import { File } from "./file.entity";
 
 @Entity("Room")
@@ -38,8 +37,8 @@ export class Room {
   @Column({ type: "uuid", nullable: false })
   channelId: string;
 
-  @Column({ type: "uuid", nullable: true })
-  teamId: string | null;
+  @Column("uuid", { array: true, default: [] })
+  teamIds: string[];
 
   @Column("text", { array: true, default: [] })
   attendees: string[];
@@ -65,9 +64,7 @@ export class Room {
   @JoinColumn({ name: "channelId" })
   channel: Channel | null;
 
-  @ManyToOne(() => Team, (team) => team.rooms, { onDelete: "SET NULL" })
-  @JoinColumn({ name: "teamId" })
-  team: Team | null;
+  // teamIds는 UUID 배열이므로 ManyToOne 관계 대신 배열로 관리
 
   @OneToMany(() => File, (file) => file.room)
   files: File[];

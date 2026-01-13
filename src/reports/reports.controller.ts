@@ -193,6 +193,24 @@ export class ReportsController {
     return this.reportsService.findByIds(reportIds);
   }
 
+  /**
+   * 사용자가 접근 가능한 회의록 목록 조회
+   * - 전체 공개 회의록 (teamIds가 빈 배열)
+   * - 사용자의 팀이 포함된 회의록
+   */
+  @Get("accessible/:channelId")
+  @UseGuards(JwtAuthGuard)
+  async getAccessibleReports(
+    @Param("channelId") channelId: string,
+    @Req() req: Request
+  ): Promise<RoomReport[]> {
+    const userId = (req as any).user?.id;
+    if (!userId) {
+      throw new Error("userId is required from token");
+    }
+    return this.reportsService.getAccessibleReports(userId, channelId);
+  }
+
   // S3 파일 다운로드 프록시
   @Get("download")
   @UseGuards(JwtAuthGuard)

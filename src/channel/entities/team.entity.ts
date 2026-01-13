@@ -9,8 +9,6 @@ import {
 } from "typeorm";
 import { Channel } from "./channel.entity";
 import { ChannelMember } from "./channel-member.entity";
-import { Room } from "../../room/entities/room.entity";
-import { RoomReport } from "../../room/entities/room-report.entity";
 import { v4 as uuidv4 } from "uuid";
 
 @Entity("Team")
@@ -44,9 +42,5 @@ export class Team {
   @OneToMany(() => ChannelMember, (member) => member.team)
   members: ChannelMember[];
 
-  @OneToMany(() => Room, (room) => room.team)
-  rooms: Room[];
-
-  @OneToMany(() => RoomReport, (report) => report.team)
-  reports: RoomReport[];
+  // Room과 RoomReport는 teamIds 배열로 관리되므로 OneToMany 관계 제거
 }

@@ -35,9 +35,10 @@ export class CreateRoomDto {
   @IsNotEmpty({ message: '채널 ID 미입력' })
   channelId: string;
 
-  @IsUUID()
+  @IsArray()
+  @IsUUID('4', { each: true })
   @IsOptional()
-  teamId?: string;
+  teamIds?: string[];  // 빈 배열 = 전체 공개
 
   @IsArray()
   @IsOptional()

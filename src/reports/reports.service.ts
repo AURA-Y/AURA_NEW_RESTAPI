@@ -9,6 +9,7 @@ import { Repository, In } from "typeorm";
 import { RoomReport } from "../room/entities/room-report.entity";
 import { Room } from "../room/entities/room.entity";
 import { User } from "../auth/entities/user.entity";
+import { ChannelMember } from "../channel/entities/channel-member.entity";
 import {
   S3Client,
   GetObjectCommand,
@@ -59,6 +60,8 @@ export class ReportsService {
     private userRepository: Repository<User>,
     @InjectRepository(Room)
     private roomRepository: Repository<Room>,
+    @InjectRepository(ChannelMember)
+    private channelMemberRepository: Repository<ChannelMember>,
     private configService: ConfigService
   ) {
     this.bucketName =
@@ -130,6 +133,45 @@ export class ReportsService {
     return this.reportsRepository.findOne({
       where: { reportId },
     });
+  }
+
+  /**
+   * 사용자가 접근 가능한 회의록 목록 조회
+   * - teamIds가 빈 배열이면 전체 공개 (채널 멤버면 접근 가능)
+   * - teamIds가 있으면 해당 팀 멤버만 접근 가능
+   */
+  async getAccessibleReports(userId: string, channelId: string): Promise<RoomReport[]> {
+    // 1. 사용자의 채널 멤버십 조회
+    const membership = await this.channelMemberRepository.findOne({
+      where: { userId, channelId }
+    });
+
+    if (!membership) {
+      throw new ForbiddenException('채널 멤버가 아닙니다');
+    }
+
+    // 2. 접근 가능한 회의록 조회
+    const queryBuilder = this.reportsRepository
+      .createQueryBuilder('report')
+      .where('report.channelId = :channelId', { channelId });
+
+    // teamIds가 빈 배열이거나, 사용자의 팀이 포함된 경우
+    if (membership.teamId) {
+      queryBuilder.andWhere(
+        '(report.teamIds = :emptyArray OR :userTeamId = ANY(report.teamIds))',
+        {
+          emptyArray: '{}',
+          userTeamId: membership.teamId
+        }
+      );
+    } else {
+      // 팀에 소속되지 않은 사용자는 전체 공개 회의록만 접근 가능
+      queryBuilder.andWhere('report.teamIds = :emptyArray', { emptyArray: '{}' });
+    }
+
+    return queryBuilder
+      .orderBy('report.createdAt', 'DESC')
+      .getMany();
   }
 
   async findAllByUserId(userId: string): Promise<RoomReport[]> {
