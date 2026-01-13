@@ -193,6 +193,24 @@ export class ReportsController {
     return this.reportsService.findByIds(reportIds);
   }
 
+  /**
+   * 사용자가 접근 가능한 회의록 목록 조회
+   * - 전체 공개 회의록 (participantUserIds가 빈 배열)
+   * - 사용자 ID가 포함된 회의록
+   */
+  @Get("accessible/:channelId")
+  @UseGuards(JwtAuthGuard)
+  async getAccessibleReports(
+    @Param("channelId") channelId: string,
+    @Req() req: Request
+  ): Promise<RoomReport[]> {
+    const userId = (req as any).user?.id;
+    if (!userId) {
+      throw new Error("userId is required from token");
+    }
+    return this.reportsService.getAccessibleReports(userId, channelId);
+  }
+
   // S3 파일 다운로드 프록시
   @Get("download")
   @UseGuards(JwtAuthGuard)
@@ -213,21 +231,25 @@ export class ReportsController {
     return new StreamableFile(stream);
   }
 
-  // S3에서 리포트 상세 정보 조회
+  // S3에서 리포트 상세 정보 조회 (접근 권한 확인)
   @Get(":id/details")
   @UseGuards(JwtAuthGuard)
-  async getReportDetails(@Param("id") id: string): Promise<any> {
-    return this.reportsService.getReportDetailsFromS3(id);
+  async getReportDetails(@Param("id") id: string, @Req() req: Request): Promise<any> {
+    const userId = (req as any).user?.id;
+    if (!userId) {
+      throw new NotFoundException("User not found");
+    }
+    return this.reportsService.getReportDetailsFromS3WithAccessCheck(id, userId);
   }
 
-  // 단일 리포트 조회 (DB)
+  // 단일 리포트 조회 (DB) - 접근 권한 확인
   @Get(":id")
   @UseGuards(JwtAuthGuard)
-  async getReportById(@Param("id") id: string): Promise<RoomReport> {
-    const report = await this.reportsService.findById(id);
-    if (!report) {
-      throw new NotFoundException(`Report not found: ${id}`);
+  async getReportById(@Param("id") id: string, @Req() req: Request): Promise<RoomReport> {
+    const userId = (req as any).user?.id;
+    if (!userId) {
+      throw new NotFoundException("User not found");
     }
-    return report;
+    return this.reportsService.findByIdWithAccessCheck(id, userId);
   }
 }

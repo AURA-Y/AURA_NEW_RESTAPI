@@ -31,6 +31,19 @@ export class RoomController {
     return this.roomService.getAllRooms();
   }
 
+  /**
+   * 사용자가 접근 가능한 방 목록 조회
+   * - 전체 공개 방 (participantUserIds가 빈 배열)
+   * - 사용자 ID가 포함된 방
+   */
+  @Get("accessible/:channelId")
+  async getAccessibleRooms(
+    @Param("channelId") channelId: string,
+    @Request() req,
+  ) {
+    return this.roomService.getAccessibleRooms(req.user.id, channelId);
+  }
+
   // 정적 경로들 먼저 (topic, channel, team)
   @Get("topic/:topic")
   async getRoomByTopic(@Param("topic") topic: string) {
@@ -61,9 +74,18 @@ export class RoomController {
     return this.roomService.getRoomsByChannelId(channelId);
   }
 
-  @Get("team/:teamId")
-  async getRoomsByTeam(@Param("teamId") teamId: string) {
-    return this.roomService.getRoomsByTeamId(teamId);
+  /**
+   * 사용자가 특정 방에 접근 가능한지 확인
+   */
+  @Get(":roomId/access")
+  async checkRoomAccess(@Param("roomId") roomId: string, @Request() req) {
+    const hasAccess = await this.roomService.checkRoomAccess(roomId, req.user.id);
+    return { hasAccess };
+  }
+
+  @Get(":roomId")
+  async getRoomById(@Param("roomId") roomId: string, @Request() req) {
+    return this.roomService.getRoomByIdWithAccessCheck(roomId, req.user.id);
   }
 
   // 동적 :roomId 경로들 (정적 경로 이후에 배치)
@@ -85,7 +107,7 @@ export class RoomController {
 
   @Post(":roomId/join")
   async joinRoom(@Param("roomId") roomId: string, @Request() req) {
-    return this.roomService.addAttendee(roomId, req.user.nickName);
+    return this.roomService.addAttendeeWithAccessCheck(roomId, req.user.id, req.user.nickName);
   }
 
   @Post(":roomId/leave")

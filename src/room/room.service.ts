@@ -4,11 +4,12 @@ import {
   ForbiddenException,
 } from "@nestjs/common";
 import { InjectRepository } from "@nestjs/typeorm";
-import { Repository } from "typeorm";
+import { Repository, Brackets } from "typeorm";
 import { Room } from "./entities/room.entity";
 import { RoomReport } from "./entities/room-report.entity";
 import { File } from "./entities/file.entity";
-import { CreateRoomDto } from "./dto/create-room.dto";  // ✅ class import
+import { ChannelMember } from "../channel/entities/channel-member.entity";
+import { CreateRoomDto } from "./dto/create-room.dto";
 
 @Injectable()
 export class RoomService {
@@ -19,6 +20,8 @@ export class RoomService {
     private roomReportRepository: Repository<RoomReport>,
     @InjectRepository(File)
     private fileRepository: Repository<File>,
+    @InjectRepository(ChannelMember)
+    private channelMemberRepository: Repository<ChannelMember>,
   ) { }
 
   /**
@@ -38,7 +41,7 @@ export class RoomService {
       roomDescription: data.roomDescription || null,
       masterId: data.masterId,
       channelId: data.channelId,
-      teamId: data.teamId || null,
+      participantUserIds: data.participantUserIds || [],  // 빈 배열 = 전체 공개
       roomPassword: data.roomPassword || null,
       roomShareLink: this.generateShareLink(data.roomId),
       attendees: data.attendees || [],
@@ -51,18 +54,33 @@ export class RoomService {
   async getAllRooms(): Promise<Room[]> {
     return this.roomRepository.find({
       order: { createdAt: "DESC" },
-      relations: ["master", "channel", "team"],
+      relations: ["master", "channel"],
     });
   }
 
   async getRoomById(roomId: string): Promise<Room> {
     const room = await this.roomRepository.findOne({
       where: { roomId },
-      relations: ["master", "channel", "team", "files"],
+      relations: ["master", "channel", "files"],
     });
 
     if (!room) {
       throw new NotFoundException(`Room not found: ${roomId}`);
+    }
+
+    return room;
+  }
+
+  /**
+   * 접근 권한을 확인한 후 방 정보 조회
+   */
+  async getRoomByIdWithAccessCheck(roomId: string, userId: string): Promise<Room> {
+    const room = await this.getRoomById(roomId);
+
+    // 접근 권한 확인
+    const hasAccess = await this.checkRoomAccess(roomId, userId);
+    if (!hasAccess) {
+      throw new ForbiddenException('이 회의에 접근할 권한이 없습니다');
     }
 
     return room;
@@ -146,6 +164,19 @@ export class RoomService {
     return room;
   }
 
+  /**
+   * 접근 권한을 확인한 후 참가자 추가
+   */
+  async addAttendeeWithAccessCheck(roomId: string, userId: string, nickName: string): Promise<Room> {
+    // 접근 권한 확인
+    const hasAccess = await this.checkRoomAccess(roomId, userId);
+    if (!hasAccess) {
+      throw new ForbiddenException('이 회의에 참여할 권한이 없습니다');
+    }
+
+    return this.addAttendee(roomId, nickName);
+  }
+
   async checkUserRole(
     roomId: string,
     userId: string
@@ -173,19 +204,70 @@ export class RoomService {
     return this.roomRepository.find({
       where: { channelId },
       order: { createdAt: "DESC" },
-      relations: ["master", "team"],
+      relations: ["master"],
     });
   }
 
   /**
-   * 팀 ID로 해당 팀의 모든 방 조회
+   * 사용자가 접근 가능한 방 목록 조회
+   * - participantUserIds가 빈 배열이면 전체 공개 (채널 멤버면 접근 가능)
+   * - participantUserIds가 있으면 해당 유저만 접근 가능
    */
-  async getRoomsByTeamId(teamId: string): Promise<Room[]> {
-    return this.roomRepository.find({
-      where: { teamId },
-      order: { createdAt: "DESC" },
-      relations: ["master"],
+  async getAccessibleRooms(userId: string, channelId: string): Promise<Room[]> {
+    // 1. 사용자의 채널 멤버십 조회
+    const membership = await this.channelMemberRepository.findOne({
+      where: { userId, channelId }
     });
+
+    if (!membership) {
+      throw new ForbiddenException('채널 멤버가 아닙니다');
+    }
+
+    // 2. 접근 가능한 회의 조회
+    // participantUserIds가 빈 배열이거나, 사용자 ID가 포함된 경우
+    const queryBuilder = this.roomRepository
+      .createQueryBuilder('room')
+      .leftJoinAndSelect('room.master', 'master')
+      .leftJoinAndSelect('room.channel', 'channel')
+      .where('room.channelId = :channelId', { channelId })
+      .andWhere(
+        '(room.participantUserIds = :emptyArray OR :userId = ANY(room.participantUserIds))',
+        {
+          emptyArray: '{}',
+          userId
+        }
+      );
+
+    return queryBuilder
+      .orderBy('room.createdAt', 'DESC')
+      .getMany();
+  }
+
+  /**
+   * 사용자가 특정 방에 접근 가능한지 확인
+   */
+  async checkRoomAccess(roomId: string, userId: string): Promise<boolean> {
+    const room = await this.roomRepository.findOne({
+      where: { roomId },
+      select: ['roomId', 'channelId', 'participantUserIds']
+    });
+
+    if (!room) return false;
+
+    // 채널 멤버십 확인
+    const membership = await this.channelMemberRepository.findOne({
+      where: { userId, channelId: room.channelId }
+    });
+
+    if (!membership) return false;
+
+    // 전체 공개인 경우 (participantUserIds가 빈 배열)
+    if (!room.participantUserIds || room.participantUserIds.length === 0) {
+      return true;
+    }
+
+    // 유저 제한인 경우 - 사용자 ID가 포함되어 있는지 확인
+    return room.participantUserIds.includes(userId);
   }
 
   /**
