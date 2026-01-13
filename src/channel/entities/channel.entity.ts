@@ -23,6 +23,9 @@ export class Channel {
   @Column({ type: "varchar", length: 100 })
   channelName: string;
 
+  @Column({ type: "text", nullable: true })
+  slackWebhookUrl: string | null;
+
   @Column({ type: "timestamp with time zone", default: () => "CURRENT_TIMESTAMP" })
   createdAt: Date;
 

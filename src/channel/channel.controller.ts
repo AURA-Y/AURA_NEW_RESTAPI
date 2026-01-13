@@ -2,6 +2,7 @@ import { Controller, Get, Post, Put, Patch, Delete, Body, Param, UseGuards, Requ
 import { ChannelService } from './channel.service';
 import { CreateChannelDto } from './dto/create-channel.dto';
 import { UpdateChannelDto } from './dto/update-channel.dto';
+import { ShareToSlackDto } from './dto/share-to-slack.dto';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 
 @Controller('channels')
@@ -155,5 +156,31 @@ export class ChannelController {
     @Request() req
   ) {
     return this.channelService.rejectJoinRequest(requestId, req.user.id);
+  }
+
+  // ==================== Slack Integration Endpoints ====================
+
+  /**
+   * POST /channels/:channelId/slack/share - Slack으로 회의록 공유
+   */
+  @Post(':channelId/slack/share')
+  async shareToSlack(
+    @Param('channelId') channelId: string,
+    @Body() shareDto: ShareToSlackDto,
+    @Request() req
+  ) {
+    return this.channelService.shareToSlack(channelId, shareDto, req.user.id);
+  }
+
+  /**
+   * GET /channels/:channelId/slack/status - Slack 웹훅 설정 여부 확인
+   */
+  @Get(':channelId/slack/status')
+  async getSlackStatus(
+    @Param('channelId') channelId: string,
+    @Request() req
+  ) {
+    const hasWebhook = await this.channelService.hasSlackWebhook(channelId, req.user.id);
+    return { hasWebhook };
   }
 }

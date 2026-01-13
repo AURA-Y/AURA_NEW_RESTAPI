@@ -24,10 +24,11 @@ model User {
 }
 
 model Channel {
-  channelId    String          @id @default(uuid()) @db.Uuid
-  channelName  String          @db.VarChar(100)
-  ownerId      String          @db.Uuid
-  createdAt    DateTime        @default(now()) @db.Timestamptz(6)
+  channelId       String          @id @default(uuid()) @db.Uuid
+  channelName     String          @db.VarChar(100)
+  slackWebhookUrl String?         @db.Text // Slack Incoming Webhook URL for sharing meeting reports
+  ownerId         String          @db.Uuid
+  createdAt       DateTime        @default(now()) @db.Timestamptz(6)
   owner        User            @relation("ChannelOwner", fields: [ownerId], references: [userId], onDelete: Cascade, onUpdate: NoAction, map: "FK_79ff036dd0e6747303835b0b3b9")
   members      ChannelMember[]
   joinRequests JoinRequest[]
