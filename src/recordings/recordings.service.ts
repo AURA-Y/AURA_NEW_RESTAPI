@@ -3,7 +3,9 @@ import { ConfigService } from "@nestjs/config";
 import {
   S3Client,
   ListObjectsV2Command,
+  GetObjectCommand,
 } from "@aws-sdk/client-s3";
+import { getSignedUrl } from "@aws-sdk/s3-request-presigner";
 
 export interface RecordingInfo {
   fileName: string;
@@ -41,9 +43,24 @@ export class RecordingsService {
   }
 
   /**
+   * S3 Pre-signed URL 생성
+   * @param key S3 객체 키
+   * @returns Pre-signed URL (1시간 유효)
+   */
+  private async getPresignedUrl(key: string): Promise<string> {
+    const command = new GetObjectCommand({
+      Bucket: this.bucketName,
+      Key: key,
+    });
+    
+    // 1시간 유효한 URL 생성
+    return getSignedUrl(this.s3Client, command, { expiresIn: 3600 });
+  }
+
+  /**
    * S3에서 특정 회의실의 녹화 파일 목록 조회
    * @param roomId 회의실 ID
-   * @returns 녹화 파일 목록
+   * @returns 녹화 파일 목록 (Pre-signed URL 포함)
    */
   async listRecordings(roomId: string): Promise<{
     success: boolean;
@@ -64,15 +81,17 @@ export class RecordingsService {
       const contents = response.Contents || [];
 
       // 녹화 파일만 필터링 (.webm, .mp4)
-      const recordings: RecordingInfo[] = contents
-        .filter((item) => {
-          const key = item.Key || "";
-          return key.endsWith(".webm") || key.endsWith(".mp4");
-        })
-        .map((item) => {
+      const filteredContents = contents.filter((item) => {
+        const key = item.Key || "";
+        return key.endsWith(".webm") || key.endsWith(".mp4");
+      });
+
+      // Pre-signed URL을 병렬로 생성
+      const recordings: RecordingInfo[] = await Promise.all(
+        filteredContents.map(async (item) => {
           const key = item.Key || "";
           const fileName = key.split("/").pop() || "";
-          const fileUrl = `https://${this.bucketName}.s3.${this.region}.amazonaws.com/${key}`;
+          const fileUrl = await this.getPresignedUrl(key);
 
           return {
             fileName,
@@ -81,12 +100,14 @@ export class RecordingsService {
             createdAt: item.LastModified?.toISOString() || "",
           };
         })
-        .sort((a, b) => {
-          // 최신순 정렬
-          return new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime();
-        });
+      );
 
-      this.logger.log(`[녹화 목록] ${recordings.length}개 파일 발견`);
+      // 최신순 정렬
+      recordings.sort((a, b) => {
+        return new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime();
+      });
+
+      this.logger.log(`[녹화 목록] ${recordings.length}개 파일 발견 (Pre-signed URL 생성 완료)`);
 
       return {
         success: true,
@@ -105,3 +126,4 @@ export class RecordingsService {
     }
   }
 }
+
