@@ -9,6 +9,7 @@ export class AuthResponseDto {
     roomReportIdxList?: string[];
     createdAt?: Date;
     updatedAt?: Date;
+    googleConnected?: boolean;
   };
 
   constructor(
@@ -21,6 +22,7 @@ export class AuthResponseDto {
       roomReportIdxList?: string[];
       createdAt?: Date;
       updatedAt?: Date;
+      googleConnected?: boolean;
     },
   ) {
     this.accessToken = accessToken;
