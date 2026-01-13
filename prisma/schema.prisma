@@ -44,6 +44,11 @@ model User {
   createdAt    DateTime @default(now())
   updatedAt    DateTime @updatedAt
 
+  // Google OAuth 토큰 (캘린더 연동용)
+  googleAccessToken  String?   @db.Text
+  googleRefreshToken String?   @db.Text
+  googleTokenExpiry  DateTime? @db.Timestamptz
+
   // 관계 설정
   ownedChannels Channel[]       @relation("ChannelOwner") // 내가 만든 채널들
   memberships   ChannelMember[] // 내가 소속된 채널 및 역할 정보
