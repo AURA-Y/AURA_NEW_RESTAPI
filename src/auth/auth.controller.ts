@@ -6,12 +6,15 @@ import {
   Delete,
   Body,
   Param,
+  Query,
   HttpCode,
   HttpStatus,
   ValidationPipe,
   UseGuards,
   Request,
+  Res,
 } from '@nestjs/common';
+import { Response } from 'express';
 import { AuthService } from './auth.service';
 import { RegisterDto } from './dto/register.dto';
 import { LoginDto } from './dto/login.dto';
@@ -85,5 +88,57 @@ export class AuthController {
     @Request() req: { user: { userId: string } },
   ): Promise<{ message: string }> {
     return this.authService.withdraw(req.user.userId);
+  }
+
+  // ==================== Google OAuth 로그인 ====================
+
+  /**
+   * Google OAuth 로그인 시작 (리다이렉트)
+   * GET /auth/google
+   */
+  @Get('google')
+  @HttpCode(HttpStatus.FOUND)
+  googleLogin(@Res() res: Response) {
+    const authUrl = this.authService.getGoogleAuthUrl();
+    res.redirect(authUrl);
+  }
+
+  /**
+   * Google OAuth 콜백 처리
+   * GET /auth/google/callback?code=xxx
+   */
+  @Get('google/callback')
+  async googleCallback(
+    @Query('code') code: string,
+    @Res() res: Response,
+  ) {
+    try {
+      const result = await this.authService.handleGoogleCallback(code);
+
+      // 프론트엔드로 토큰과 함께 리다이렉트
+      const frontendUrl = process.env.FRONTEND_URL || 'https://aura.ai.kr';
+      const params = new URLSearchParams({
+        token: result.accessToken,
+        user: JSON.stringify(result.user),
+      });
+
+      res.redirect(`${frontendUrl}/auth/google/success?${params.toString()}`);
+    } catch (error) {
+      const frontendUrl = process.env.FRONTEND_URL || 'https://aura.ai.kr';
+      res.redirect(`${frontendUrl}/login?error=${encodeURIComponent(error.message)}`);
+    }
+  }
+
+  /**
+   * Google 연동 상태 확인
+   * GET /auth/google/status
+   */
+  @Get('google/status')
+  @UseGuards(JwtAuthGuard)
+  @HttpCode(HttpStatus.OK)
+  async checkGoogleStatus(
+    @Request() req: { user: { userId: string } },
+  ): Promise<{ connected: boolean }> {
+    return this.authService.checkGoogleConnection(req.user.userId);
   }
 }

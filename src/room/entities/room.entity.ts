@@ -25,7 +25,7 @@ export class Room {
   @Column({ type: "varchar", length: 50, nullable: true })
   roomPassword: string | null;
 
-  @Column({ type: "varchar", length: 255, unique: true })
+  @Column({ type: "varchar", length: 255, unique: true, default: () => "gen_random_uuid()" })
   roomShareLink: string;
 
   @Column({ type: "timestamp with time zone", default: () => "CURRENT_TIMESTAMP" })

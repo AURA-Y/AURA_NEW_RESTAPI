@@ -7,21 +7,52 @@ import {
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { JwtService } from '@nestjs/jwt';
+import { ConfigService } from '@nestjs/config';
+import { OAuth2Client } from 'google-auth-library';
 import * as bcrypt from 'bcrypt';
 import { User } from './entities/user.entity';
+import { ChannelMember, ChannelRole } from '../channel/entities/channel-member.entity';
 import { RegisterDto } from './dto/register.dto';
 import { LoginDto } from './dto/login.dto';
 import { AuthResponseDto } from './dto/auth-response.dto';
 
+// 기본 채널 ID (모든 신규 사용자가 자동으로 가입되는 채널)
+const DEFAULT_CHANNEL_ID = 'ba13a3bf-0844-45b0-a408-96cd4186cad5';
+
+// Google OAuth 스코프 (프로필 + 캘린더)
+const GOOGLE_SCOPES = [
+  'https://www.googleapis.com/auth/userinfo.email',
+  'https://www.googleapis.com/auth/userinfo.profile',
+  'https://www.googleapis.com/auth/calendar.readonly',
+  'https://www.googleapis.com/auth/calendar.events.readonly',
+];
+
 @Injectable()
 export class AuthService {
   private readonly logger = new Logger(AuthService.name);
+  private oauth2Client: OAuth2Client;
 
   constructor(
     @InjectRepository(User)
     private userRepository: Repository<User>,
+    @InjectRepository(ChannelMember)
+    private channelMemberRepository: Repository<ChannelMember>,
     private jwtService: JwtService,
-  ) {}
+    private configService: ConfigService,
+  ) {
+    // Google OAuth2 클라이언트 초기화
+    const clientId = this.configService.get<string>('GOOGLE_CLIENT_ID');
+    const clientSecret = this.configService.get<string>('GOOGLE_CLIENT_SECRET');
+    const redirectUri = this.configService.get<string>('GOOGLE_AUTH_REDIRECT_URI');
+
+    if (clientId && clientSecret && redirectUri) {
+      this.oauth2Client = new OAuth2Client(clientId, clientSecret, redirectUri);
+      this.logger.log(`Google OAuth2 client initialized for auth`);
+      this.logger.log(`Redirect URI: ${redirectUri}`);
+    } else {
+      this.logger.warn(`Google OAuth2 missing config - clientId: ${!!clientId}, clientSecret: ${!!clientSecret}, redirectUri: ${!!redirectUri}`);
+    }
+  }
 
   /**
    * 회원가입
@@ -60,6 +91,15 @@ export class AuthService {
     await this.userRepository.save(user);
 
     this.logger.log(`New user registered: ${nickname} (${email})`);
+
+    // 기본 채널에 자동 가입
+    const membership = this.channelMemberRepository.create({
+      channelId: DEFAULT_CHANNEL_ID,
+      userId: user.userId,
+      role: ChannelRole.MEMBER,
+    });
+    await this.channelMemberRepository.save(membership);
+    this.logger.log(`User added to default channel: ${user.userId}`);
 
     // JWT 토큰 생성
     const accessToken = this.generateToken(user);
@@ -236,5 +276,132 @@ export class AuthService {
     this.logger.log(`User withdrawn: ${user.email} (${user.nickName})`);
 
     return { message: '계정이 성공적으로 삭제되었습니다.' };
+  }
+
+  // ==================== Google OAuth 로그인 ====================
+
+  /**
+   * Google OAuth URL 생성
+   */
+  getGoogleAuthUrl(): string {
+    if (!this.oauth2Client) {
+      throw new Error('Google OAuth2 client not configured');
+    }
+
+    const authUrl = this.oauth2Client.generateAuthUrl({
+      access_type: 'offline',
+      scope: GOOGLE_SCOPES,
+      prompt: 'consent', // 항상 refresh_token 받기
+    });
+
+    this.logger.log(`Generated Google Auth URL: ${authUrl}`);
+    return authUrl;
+  }
+
+  /**
+   * Google OAuth 콜백 처리 - 로그인/회원가입 + 토큰 저장
+   */
+  async handleGoogleCallback(code: string): Promise<AuthResponseDto> {
+    if (!this.oauth2Client) {
+      throw new Error('Google OAuth2 client not configured');
+    }
+
+    // 1. Authorization code로 토큰 획득
+    const { tokens } = await this.oauth2Client.getToken(code);
+    this.oauth2Client.setCredentials(tokens);
+
+    // 2. Google 사용자 정보 가져오기
+    const response = await fetch(
+      'https://www.googleapis.com/oauth2/v2/userinfo',
+      {
+        headers: { Authorization: `Bearer ${tokens.access_token}` },
+      },
+    );
+
+    if (!response.ok) {
+      throw new UnauthorizedException('Failed to get Google user info');
+    }
+
+    const googleUser = await response.json();
+    const { email, name, picture } = googleUser;
+
+    this.logger.log(`Google login attempt: ${email} (${name})`);
+
+    // 3. 기존 사용자 조회 또는 신규 생성
+    let user = await this.userRepository.findOne({ where: { email } });
+
+    if (!user) {
+      // 신규 회원가입 - 닉네임은 Google 이름 사용 (중복 시 랜덤 suffix)
+      let nickName = name || email.split('@')[0];
+      const existingNickname = await this.userRepository.findOne({
+        where: { nickName },
+      });
+
+      if (existingNickname) {
+        nickName = `${nickName}_${Math.random().toString(36).substring(2, 6)}`;
+      }
+
+      user = this.userRepository.create({
+        email,
+        nickName,
+        userPassword: '', // Google 로그인은 비밀번호 없음
+        googleAccessToken: tokens.access_token || null,
+        googleRefreshToken: tokens.refresh_token || null,
+        googleTokenExpiry: tokens.expiry_date ? new Date(tokens.expiry_date) : null,
+      });
+
+      await this.userRepository.save(user);
+      this.logger.log(`New Google user registered: ${nickName} (${email})`);
+
+      // 기본 채널에 자동 가입
+      const existingMembership = await this.channelMemberRepository.findOne({
+        where: { channelId: DEFAULT_CHANNEL_ID, userId: user.userId },
+      });
+
+      if (!existingMembership) {
+        const membership = this.channelMemberRepository.create({
+          channelId: DEFAULT_CHANNEL_ID,
+          userId: user.userId,
+          role: ChannelRole.MEMBER,
+        });
+        await this.channelMemberRepository.save(membership);
+        this.logger.log(`Google user added to default channel: ${user.userId}`);
+      }
+    } else {
+      // 기존 사용자 - Google 토큰 업데이트
+      user.googleAccessToken = tokens.access_token || user.googleAccessToken;
+      if (tokens.refresh_token) {
+        user.googleRefreshToken = tokens.refresh_token;
+      }
+      user.googleTokenExpiry = tokens.expiry_date ? new Date(tokens.expiry_date) : user.googleTokenExpiry;
+
+      await this.userRepository.save(user);
+      this.logger.log(`Google user logged in: ${user.nickName} (${email})`);
+    }
+
+    // 4. App JWT 생성
+    const accessToken = this.generateToken(user);
+
+    return new AuthResponseDto(accessToken, {
+      id: user.userId,
+      userId: user.userId,
+      email: user.email,
+      nickName: user.nickName,
+      createdAt: user.createdAt,
+      updatedAt: user.updatedAt,
+      googleConnected: true,
+    });
+  }
+
+  /**
+   * Google 연동 상태 확인
+   */
+  async checkGoogleConnection(userId: string): Promise<{ connected: boolean }> {
+    const user = await this.userRepository.findOne({
+      where: { userId },
+      select: ['userId', 'googleAccessToken'],
+    });
+
+    return { connected: !!(user?.googleAccessToken) };
   }
 }

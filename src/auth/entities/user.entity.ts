@@ -25,11 +25,21 @@ export class User {
   @Column({ type: "varchar", length: 100, unique: true })
   nickName: string;
 
-  @Column({ type: "timestamp with time zone" })
+  @Column({ type: "timestamp with time zone", default: () => "CURRENT_TIMESTAMP" })
   createdAt: Date;
 
-  @Column({ type: "timestamp with time zone" })
+  @Column({ type: "timestamp with time zone", default: () => "CURRENT_TIMESTAMP" })
   updatedAt: Date;
+
+  // Google OAuth 토큰 (캘린더 연동용)
+  @Column({ type: "text", nullable: true })
+  googleAccessToken: string | null;
+
+  @Column({ type: "text", nullable: true })
+  googleRefreshToken: string | null;
+
+  @Column({ type: "timestamp with time zone", nullable: true })
+  googleTokenExpiry: Date | null;
 
   @BeforeInsert()
   setInsertDefaults() {
