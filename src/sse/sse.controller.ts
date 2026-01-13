@@ -68,7 +68,6 @@ export class SseController {
     status: string;
     roomDeleted: boolean;
     reportDeleted: boolean;
-    filesDeleted: number;
     s3Deleted: boolean;
   }> {
     console.log(`[Internal] Room cleanup requested for: ${payload.roomId}`);
