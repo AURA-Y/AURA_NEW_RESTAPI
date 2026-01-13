@@ -1,4 +1,3 @@
-// prisma/schema.prisma
 generator client {
   provider = "prisma-client-js"
   output   = "../generated/prisma"
@@ -8,158 +7,118 @@ datasource db {
   provider = "postgresql"
 }
 
-// --------------------------------------
-// 1. Enums (열거형)
-// --------------------------------------
-
-enum ChannelRole {
-  OWNER // 채널 소유자 (회사 대표)
-  ADMIN // 관리자
-  MEMBER // 일반 멤버
-}
-
-enum ReportScope {
-  PUBLIC // 전체 공개
-  TEAM // 특정 팀 공개
-  CHANNEL // 채널 전체 공개
-  PRIVATE // 참여자만 공개
-}
-
-enum JoinRequestStatus {
-  PENDING  // 대기중
-  APPROVED // 승인됨
-  REJECTED // 거절됨
-}
-
-// --------------------------------------
-// 2. Models
-// --------------------------------------
-
 model User {
-  userId       String   @id @default(uuid()) @db.Uuid
-  email        String   @unique @db.VarChar(255)
-  userPassword String   @db.VarChar(255)
-  nickName     String   @unique @db.VarChar(100)
-  createdAt    DateTime @default(now())
-  updatedAt    DateTime @updatedAt
-
-  // Google OAuth 토큰 (캘린더 연동용)
-  googleAccessToken  String?   @db.Text
-  googleRefreshToken String?   @db.Text
-  googleTokenExpiry  DateTime? @db.Timestamptz
-
-  // 관계 설정
-  ownedChannels Channel[]       @relation("ChannelOwner") // 내가 만든 채널들
-  memberships   ChannelMember[] // 내가 소속된 채널 및 역할 정보
-  createdRooms  Room[]          @relation("RoomMaster") // 내가 방장인 회의방들
-  joinRequests  JoinRequest[]   // 내가 보낸 가입 요청들
+  userId             String          @id @default(uuid()) @db.Uuid
+  email              String          @unique(map: "UQ_4a257d2c9837248d70640b3e36e") @db.VarChar(255)
+  userPassword       String          @db.VarChar(255)
+  nickName           String          @unique(map: "UQ_949dca0566481700b137756b7b6") @db.VarChar(100)
+  googleAccessToken  String?
+  googleRefreshToken String?
+  googleTokenExpiry  DateTime?       @db.Timestamptz(6)
+  createdAt          DateTime        @default(now()) @db.Timestamptz(6)
+  updatedAt          DateTime        @default(now()) @updatedAt @db.Timestamptz(6)
+  ownedChannels      Channel[]       @relation("ChannelOwner")
+  memberships        ChannelMember[]
+  joinRequests       JoinRequest[]
+  createdRooms       Room[]          @relation("RoomMaster")
 }
 
 model Channel {
-  channelId   String   @id @default(uuid()) @db.Uuid
-  channelName String   @db.VarChar(100)
-  createdAt   DateTime @default(now())
-
-  // 소유자 관계
-  ownerId String @db.Uuid
-  owner   User   @relation("ChannelOwner", fields: [ownerId], references: [userId])
-
-  // 채널 내 리소스
+  channelId       String          @id @default(uuid()) @db.Uuid
+  channelName     String          @db.VarChar(100)
+  slackWebhookUrl String?         @db.Text // Slack Incoming Webhook URL for sharing meeting reports
+  ownerId         String          @db.Uuid
+  createdAt       DateTime        @default(now()) @db.Timestamptz(6)
+  owner        User            @relation("ChannelOwner", fields: [ownerId], references: [userId], onDelete: Cascade, onUpdate: NoAction, map: "FK_79ff036dd0e6747303835b0b3b9")
   members      ChannelMember[]
-  teams        Team[]
+  joinRequests JoinRequest[]
   rooms        Room[]
   reports      RoomReport[]
-  joinRequests JoinRequest[] // 이 채널에 대한 가입 요청들
+  teams        Team[]
 }
 
 model ChannelMember {
-  userId    String      @db.Uuid
-  channelId String      @db.Uuid
-  teamId    String?     @db.Uuid // 소속된 팀 (없을 수 있음)
-  role      ChannelRole @default(MEMBER)
-  joinedAt  DateTime    @default(now())
+  userId    String                  @db.Uuid
+  channelId String                  @db.Uuid
+  teamId    String?                 @db.Uuid
+  role      ChannelMember_role_enum @default(MEMBER)
+  joinedAt  DateTime                @default(now()) @db.Timestamptz(6)
+  channel   Channel                 @relation(fields: [channelId], references: [channelId], onDelete: Cascade, onUpdate: NoAction, map: "FK_10c976f3ff0bbea10b695793452")
+  team      Team?                   @relation(fields: [teamId], references: [teamId], onUpdate: NoAction, map: "FK_2d2b775472172d0a404746cb4a5")
+  user      User                    @relation(fields: [userId], references: [userId], onDelete: Cascade, onUpdate: NoAction, map: "FK_ef59c13cf97b76aac16a9b629fe")
 
-  user    User    @relation(fields: [userId], references: [userId], onDelete: Cascade)
-  channel Channel @relation(fields: [channelId], references: [channelId], onDelete: Cascade)
-  team    Team?   @relation(fields: [teamId], references: [teamId], onDelete: SetNull)
-
-  @@id([userId, channelId]) // 복합키 설정 (userId, channelId 순서로 변경)
+  @@id([userId, channelId])
 }
 
 model Team {
-  teamId    String   @id @default(uuid()) @db.Uuid
-  teamName  String   @db.VarChar(100)
-  createdAt DateTime @default(now())
-
-  channelId String  @db.Uuid
-  channel   Channel @relation(fields: [channelId], references: [channelId], onDelete: Cascade)
-
-  members ChannelMember[] // 팀에 속한 멤버들
+  teamId    String          @id @default(uuid()) @db.Uuid
+  teamName  String          @db.VarChar(100)
+  createdAt DateTime        @db.Timestamptz(6)
+  channelId String          @db.Uuid
+  members   ChannelMember[]
+  channel   Channel         @relation(fields: [channelId], references: [channelId], onDelete: Cascade, onUpdate: NoAction, map: "FK_89f8ebfc63ee1f17e6fad07726a")
 }
 
 model Room {
-  roomId          String   @id @db.VarChar(255) // 회의방 고유 ID 백엔드에서 생성 room- 형식
-  roomTopic       String   @db.VarChar(255)     // 생성자가 작성한 회의 주제
-  roomDescription String?  @db.Text             // 생성자가 작성한 회의 목표
-  roomPassword    String?  @db.VarChar(50)      // 생성자가 설정한 회의방 비번
-  roomShareLink   String   @unique              // 회의방 공유 링크
-  createdAt       DateTime @default(now())      // 회의방 생성 일시
-
-  // 방장 정보
-  masterId String @db.Uuid
-  master   User   @relation("RoomMaster", fields: [masterId], references: [userId])
-
-  // 소속 정보
-  channelId String  @db.Uuid
-  channel   Channel @relation(fields: [channelId], references: [channelId])
-
-  // 접근 권한 (유저 기반) - 빈 배열이면 전체 공개
+  roomId             String   @id @db.VarChar(255)
+  roomTopic          String   @db.VarChar(255)
+  roomDescription    String?
+  roomPassword       String?  @db.VarChar(50)
+  masterId           String   @db.Uuid
+  channelId          String   @db.Uuid
+  attendees          String[] @default([])
+  token              String?
+  tags               String[] @default([])
   participantUserIds String[] @default([]) @db.Uuid
-
-  // 회의 데이터
-  attendees String[] @default([])
-  token     String?  @db.Text // 미디어 서버 접속용 토큰
-  tags      String[] @default([]) // 회의 태그 (최대 10개)
-
-  // 파일 (JSON 형태로 저장)
-  // [{fileId, fileName, fileUrl, fileSize, createdAt}, ...]
-  uploadFileList Json @default("[]")
+  roomShareLink      String   @unique(map: "UQ_9afb32bb37027f2d69429d50876") @default(dbgenerated("gen_random_uuid()")) @db.VarChar(255)
+  createdAt          DateTime @default(now()) @db.Timestamptz(6)
+  uploadFileList     Json     @default("[]")
+  master             User     @relation("RoomMaster", fields: [masterId], references: [userId], onDelete: Cascade, onUpdate: NoAction, map: "FK_56edc8746a89b70d50816f6aaf3")
+  channel            Channel  @relation(fields: [channelId], references: [channelId], onDelete: Cascade, onUpdate: NoAction, map: "FK_c3fb69a467978452fb2160f9dfa")
 }
 
 model RoomReport {
-  reportId    String   @id @db.VarChar(255) // roomId와 동일한 값
-  topic       String   @db.VarChar(255)
-  description String?  @db.Text
-  attendees   String[] @default([])
-  tags        String[] @default([]) // 회의 태그 (Room에서 복사)
-  createdAt   DateTime @default(now())
-
-  // 권한 범위 설정
-  shareScope  ReportScope @default(CHANNEL)
-  specialAuth String[]    @default([]) @db.Uuid // 특별 열람 권한을 가진 userId 배열
-
-  // roomId는 FK 없이 단순 문자열로 저장 (Room 삭제 시 Report 유지)
-  roomId String @unique @db.VarChar(255)
-
-  // Channel 관계만 유지 (Team 관계 제거)
-  channelId String  @db.Uuid
-  channel   Channel @relation(fields: [channelId], references: [channelId])
-
-  // 접근 권한 (유저 기반) - 빈 배열이면 전체 공개
-  participantUserIds String[] @default([]) @db.Uuid
+  reportId           String                     @id @db.VarChar(255)
+  topic              String                     @db.VarChar(255)
+  description        String?
+  attendees          String[]                   @default([])
+  shareScope         RoomReport_sharescope_enum @default(CHANNEL)
+  specialAuth        String[]                   @default([]) @db.Uuid
+  roomId             String                     @unique(map: "UQ_0e72b6c8cd1c2b3bf4f7340b9ea") @db.VarChar(255)
+  channelId          String                     @db.Uuid
+  tags               String[]                   @default([])
+  participantUserIds String[]                   @default([]) @db.Uuid
+  createdAt          DateTime                   @default(now()) @db.Timestamptz(6)
+  channel            Channel                    @relation(fields: [channelId], references: [channelId], onDelete: Cascade, onUpdate: NoAction, map: "FK_be4070416b4b332fc4c36a1dae7")
 }
 
 model JoinRequest {
-  id          String            @id @default(uuid()) @db.Uuid
-  userId      String            @db.Uuid
-  channelId   String            @db.Uuid
-  status      JoinRequestStatus @default(PENDING)
-  createdAt   DateTime          @default(now())
-  processedAt DateTime?
-  expiresAt   DateTime?         // 만료 시간 (처리 후 24시간)
+  id          String                  @id @default(uuid()) @db.Uuid
+  userId      String                  @db.Uuid
+  channelId   String                  @db.Uuid
+  status      JoinRequest_status_enum @default(PENDING)
+  createdAt   DateTime                @default(now()) @db.Timestamptz(6)
+  processedAt DateTime?               @db.Timestamptz(6)
+  expiresAt   DateTime?               @db.Timestamptz(6)
+  user        User                    @relation(fields: [userId], references: [userId], onDelete: Cascade, onUpdate: NoAction, map: "FK_6df814fc490837105048e50429f")
+  channel     Channel                 @relation(fields: [channelId], references: [channelId], onDelete: Cascade, onUpdate: NoAction, map: "FK_eade68e793cabddf62d9f8f36c4")
+}
 
-  user    User    @relation(fields: [userId], references: [userId])
-  channel Channel @relation(fields: [channelId], references: [channelId])
+enum ChannelMember_role_enum {
+  OWNER
+  ADMIN
+  MEMBER
+}
 
-  @@unique([userId, channelId]) // 중복 요청 방지
+enum JoinRequest_status_enum {
+  PENDING
+  APPROVED
+  REJECTED
+}
+
+enum RoomReport_sharescope_enum {
+  PUBLIC
+  TEAM
+  CHANNEL
+  PRIVATE
 }
