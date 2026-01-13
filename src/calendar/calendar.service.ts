@@ -38,6 +38,9 @@ export class CalendarService implements OnModuleInit {
     description?: string;
     durationMinutes?: number;
   }): Promise<calendar_v3.Schema$Event> {
+    if (!this.calendar) {
+      throw new Error('Calendar service not initialized. Check GOOGLE_SERVICE_ACCOUNT_PRIVATE_KEY env variable.');
+    }
     const { title, date, time, description, durationMinutes = 60 } = params;
 
     let start: calendar_v3.Schema$EventDateTime;
@@ -75,6 +78,10 @@ export class CalendarService implements OnModuleInit {
     timeMin?: string;
     timeMax?: string;
   }): Promise<calendar_v3.Schema$Event[]> {
+    if (!this.calendar) {
+      console.warn('[Calendar] Service not initialized, returning empty list');
+      return [];
+    }
     const { maxResults = 10, timeMin, timeMax } = params || {};
 
     const response = await this.calendar.events.list({
@@ -91,6 +98,9 @@ export class CalendarService implements OnModuleInit {
 
   // 일정 삭제
   async deleteEvent(eventId: string): Promise<void> {
+    if (!this.calendar) {
+      throw new Error('Calendar service not initialized. Check GOOGLE_SERVICE_ACCOUNT_PRIVATE_KEY env variable.');
+    }
     await this.calendar.events.delete({
       calendarId: CALENDAR_ID,
       eventId,
