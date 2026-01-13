@@ -94,11 +94,6 @@ export class RoomController {
     return this.roomService.checkUserRole(roomId, req.user.id);
   }
 
-  @Get(":roomId")
-  async getRoomById(@Param("roomId") roomId: string) {
-    return this.roomService.getRoomById(roomId);
-  }
-
   @Delete(":roomId")
   async deleteRoom(@Param("roomId") roomId: string, @Request() req) {
     await this.roomService.deleteRoom(roomId, req.user.id);
