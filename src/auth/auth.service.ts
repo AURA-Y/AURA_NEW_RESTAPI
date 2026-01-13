@@ -69,7 +69,6 @@ export class AuthService {
       userId: user.userId,
       email: user.email,
       nickName: user.nickName,
-      nickname: user.nickName,
       createdAt: user.createdAt,
       updatedAt: user.updatedAt,
     });
@@ -115,7 +114,6 @@ export class AuthService {
       userId: user.userId,
       email: user.email,
       nickName: user.nickName,
-      nickname: user.nickName,
       createdAt: user.createdAt,
       updatedAt: user.updatedAt,
     });
@@ -127,8 +125,7 @@ export class AuthService {
   private generateToken(user: User): string {
     const payload = {
       sub: user.userId,
-      username: user.nickName,
-      name: user.nickName,
+      nickName: user.nickName,
     };
 
     return this.jwtService.sign(payload);
@@ -217,7 +214,6 @@ export class AuthService {
       userId: user.userId,
       email: user.email,
       nickName: user.nickName,
-      nickname: user.nickName,
       createdAt: user.createdAt,
       updatedAt: user.updatedAt,
     });

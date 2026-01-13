@@ -58,8 +58,7 @@ export class RoomController {
 
   @Post(":roomId/join")
   async joinRoom(@Param("roomId") roomId: string, @Request() req) {
-    // userId 대신 nickname을 저장
-    return this.roomService.addAttendee(roomId, req.user.username);
+    return this.roomService.addAttendee(roomId, req.user.nickName);
   }
 
   @Get(":roomId/role")
@@ -69,7 +68,7 @@ export class RoomController {
 
   @Post(":roomId/leave")
   async leaveRoom(@Param("roomId") roomId: string, @Request() req) {
-    await this.roomService.leaveRoom(roomId, req.user.username);
+    await this.roomService.leaveRoom(roomId, req.user.nickName);
     return { message: "Left room successfully" };
   }
 }

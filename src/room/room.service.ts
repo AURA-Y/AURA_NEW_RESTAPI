@@ -100,19 +100,46 @@ export class RoomService {
       throw new ForbiddenException("Only the master can delete this room");
     }
 
+    // Room 삭제 전에 attendees를 RoomReport에 동기화 (Room 삭제 후 웹훅에서 사용)
+    if (room.attendees && room.attendees.length > 0) {
+      const report = await this.roomReportRepository.findOne({
+        where: { reportId: roomId },
+      });
+
+      if (report) {
+        // Room의 attendees를 RoomReport에 병합 (중복 제거)
+        const mergedAttendees = [...new Set([...report.attendees, ...room.attendees])];
+        await this.roomReportRepository.update(
+          { reportId: roomId },
+          { attendees: mergedAttendees }
+        );
+        console.log(`[Room 삭제] RoomReport attendees 동기화: ${mergedAttendees.join(', ')}`);
+      }
+    }
+
     // File 삭제
     await this.fileRepository.delete({ roomId });
     // Room 삭제 (RoomReport는 FK 없이 독립적으로 유지됨)
     await this.roomRepository.delete({ roomId });
   }
 
-  async addAttendee(roomId: string, nickname: string): Promise<Room> {
+  async addAttendee(roomId: string, nickName: string): Promise<Room> {
     const room = await this.getRoomById(roomId);
 
-    // nickname으로 저장 (중복 체크)
-    if (!room.attendees.includes(nickname)) {
-      room.attendees.push(nickname);
-      return this.roomRepository.save(room);
+    // nickName으로 저장 (중복 체크)
+    if (!room.attendees.includes(nickName)) {
+      room.attendees.push(nickName);
+      await this.roomRepository.save(room);
+
+      // Report 테이블도 함께 업데이트 (reportId = roomId)
+      const report = await this.roomReportRepository.findOne({
+        where: { reportId: roomId },
+      });
+
+      if (report && !report.attendees.includes(nickName)) {
+        report.attendees.push(nickName);
+        await this.roomReportRepository.save(report);
+      }
     }
 
     return room;
@@ -132,19 +159,10 @@ export class RoomService {
     };
   }
 
-  async leaveRoom(roomId: string, nickname: string): Promise<void> {
-    const room = await this.getRoomById(roomId);
-
-    // nickname 제거
-    room.attendees = room.attendees.filter((attendee) => attendee !== nickname);
-    await this.roomRepository.save(room);
-
-    // 방에 남은 인원이 없으면 방 삭제
-    if (room.attendees.length === 0) {
-      await this.fileRepository.delete({ roomId });
-      await this.roomRepository.delete({ roomId });
-      console.log(`Room ${roomId} deleted because it is empty.`);
-    }
+  async leaveRoom(roomId: string, nickName: string): Promise<void> {
+    // 참여자 목록에서 제거하지 않음 (한번 참여한 기록 유지)
+    // 방 삭제는 LiveKit webhook에서 처리
+    console.log(`User ${nickName} left room ${roomId} (attendees preserved)`);
   }
 
   /**
