@@ -34,7 +34,7 @@ export class JoinRequest {
   })
   status: JoinRequestStatus;
 
-  @Column({ type: "timestamp with time zone" })
+  @Column({ type: "timestamp with time zone", default: () => "CURRENT_TIMESTAMP" })
   createdAt: Date;
 
   @Column({ type: "timestamp with time zone", nullable: true })

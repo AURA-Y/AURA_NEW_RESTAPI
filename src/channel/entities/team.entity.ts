@@ -19,7 +19,7 @@ export class Team {
   @Column({ type: "varchar", length: 100 })
   teamName: string;
 
-  @Column({ type: "timestamp with time zone" })
+  @Column({ type: "timestamp" })
   createdAt: Date;
 
   @Column({ type: "uuid" })
