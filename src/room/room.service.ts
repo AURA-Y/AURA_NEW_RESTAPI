@@ -61,7 +61,7 @@ export class RoomService {
   async getRoomById(roomId: string): Promise<Room> {
     const room = await this.roomRepository.findOne({
       where: { roomId },
-      relations: ["master", "channel", "files"],
+      relations: ["master", "channel"],
     });
 
     if (!room) {

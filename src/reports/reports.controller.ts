@@ -21,11 +21,15 @@ import { RoomReport } from "../room/entities/room-report.entity";
 import { JwtAuthGuard } from "../auth/guards/jwt-auth.guard";
 import { FilesInterceptor } from "@nestjs/platform-express";
 import { CreateReportDto } from "./dto/create-report.dto";
+import { SseService } from "../sse/sse.service";
 import * as multer from "multer";
 
 @Controller("reports")
 export class ReportsController {
-  constructor(private readonly reportsService: ReportsService) {}
+  constructor(
+    private readonly reportsService: ReportsService,
+    private readonly sseService: SseService,
+  ) {}
 
   // 파일 업로드 -> S3 저장 후 메타 반환
   @Post("upload-files")
@@ -141,10 +145,15 @@ export class ReportsController {
   @UseGuards(JwtAuthGuard)
   async createReport(@Body() body: CreateReportDto, @Req() req: Request) {
     const userId = (req as any).user?.id;
+    const userNickName = (req as any).user?.nickName;
     if (!userId) {
       throw new Error("userId is required from token");
     }
     const details = await this.reportsService.createReport({ ...body, userId });
+
+    // 회의록 생성 시점에는 알림 없음
+    // 요약 완료 시점(RAG 웹훅 handleReportComplete)에서 알림 전송
+
     return details;
   }
 
