@@ -29,6 +29,9 @@ export class RoomReport {
   @Column("text", { array: true, default: [] })
   attendees: string[];
 
+  @Column("text", { array: true, default: [] })
+  tags: string[];
+
   @Column({ type: "timestamp with time zone" })
   createdAt: Date;
 
@@ -59,6 +62,9 @@ export class RoomReport {
     }
     if (!this.attendees) {
       this.attendees = [];
+    }
+    if (!this.tags) {
+      this.tags = [];
     }
     if (!this.specialAuth) {
       this.specialAuth = [];

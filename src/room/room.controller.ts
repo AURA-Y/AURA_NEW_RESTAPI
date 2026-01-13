@@ -5,6 +5,7 @@ import {
   Delete,
   Param,
   Body,
+  Query,
   UseGuards,
   Request,
 } from "@nestjs/common";
@@ -43,9 +44,29 @@ export class RoomController {
     return this.roomService.getAccessibleRooms(req.user.id, channelId);
   }
 
+  // 정적 경로들 먼저 (topic, channel, team)
   @Get("topic/:topic")
   async getRoomByTopic(@Param("topic") topic: string) {
     return this.roomService.getRoomByTopic(topic);
+  }
+
+  @Get("channel/:channelId/search")
+  async searchRooms(
+    @Param("channelId") channelId: string,
+    @Query("keyword") keyword?: string,
+    @Query("tags") tags?: string | string[],
+  ) {
+    // tags는 단일 문자열 또는 배열로 올 수 있음
+    const tagArray = tags
+      ? (Array.isArray(tags) ? tags : [tags])
+      : [];
+    return this.roomService.searchRooms(channelId, keyword, tagArray);
+  }
+
+  @Get("channel/:channelId/tags")
+  async getChannelTags(@Param("channelId") channelId: string) {
+    const tags = await this.roomService.getTagsByChannel(channelId);
+    return { tags };
   }
 
   @Get("channel/:channelId")
@@ -67,6 +88,17 @@ export class RoomController {
     return this.roomService.getRoomByIdWithAccessCheck(roomId, req.user.id);
   }
 
+  // 동적 :roomId 경로들 (정적 경로 이후에 배치)
+  @Get(":roomId/role")
+  async checkUserRole(@Param("roomId") roomId: string, @Request() req) {
+    return this.roomService.checkUserRole(roomId, req.user.id);
+  }
+
+  @Get(":roomId")
+  async getRoomById(@Param("roomId") roomId: string) {
+    return this.roomService.getRoomById(roomId);
+  }
+
   @Delete(":roomId")
   async deleteRoom(@Param("roomId") roomId: string, @Request() req) {
     await this.roomService.deleteRoom(roomId, req.user.id);
@@ -76,11 +108,6 @@ export class RoomController {
   @Post(":roomId/join")
   async joinRoom(@Param("roomId") roomId: string, @Request() req) {
     return this.roomService.addAttendeeWithAccessCheck(roomId, req.user.id, req.user.nickName);
-  }
-
-  @Get(":roomId/role")
-  async checkUserRole(@Param("roomId") roomId: string, @Request() req) {
-    return this.roomService.checkUserRole(roomId, req.user.id);
   }
 
   @Post(":roomId/leave")

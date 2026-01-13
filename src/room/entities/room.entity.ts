@@ -46,6 +46,9 @@ export class Room {
   @Column({ type: "text", nullable: true })
   token: string | null;
 
+  @Column("text", { array: true, default: [] })
+  tags: string[];
+
   @BeforeInsert()
   setDefaults() {
     if (!this.createdAt) {
@@ -53,6 +56,9 @@ export class Room {
     }
     if (!this.attendees) {
       this.attendees = [];
+    }
+    if (!this.tags) {
+      this.tags = [];
     }
   }
 

@@ -41,6 +41,7 @@ export interface ReportDetails {
   topic: string;
   description?: string;
   attendees: string[];
+  tags?: string[];
   createdAt: string;
   shareScope: "CHANNEL" | "PRIVATE";
   uploadFileList: FileInfo[];
@@ -431,6 +432,7 @@ export class ReportsService {
     topic: string;
     description?: string;
     attendees: string[];
+    tags?: string[];
     uploadFileList: FileInfo[];
     createdAt?: string;
     channelId: string;
@@ -457,6 +459,7 @@ export class ReportsService {
       description: payload.description || null,
       attendees: payload.attendees,
       participantUserIds,  // Room에서 복사한 participantUserIds
+      tags: payload.tags || [],
       createdAt: new Date(createdAt),
     });
     await this.reportsRepository.save(meta);
@@ -468,11 +471,18 @@ export class ReportsService {
       topic: payload.topic,
       description: payload.description,
       attendees: payload.attendees,
+      tags: payload.tags || [],
       createdAt,
       shareScope: "CHANNEL",
       uploadFileList: payload.uploadFileList || [],
     };
-    await this.saveReportDetailsToS3(details);
+
+    // S3 저장 시도 (실패해도 DB 저장은 완료됨)
+    try {
+      await this.saveReportDetailsToS3(details);
+    } catch (s3Error) {
+      this.logger.warn(`Failed to save report to S3 (report created in DB): ${s3Error.message}`);
+    }
 
     return details;
   }
@@ -666,15 +676,56 @@ export class ReportsService {
           parsed.shareScope = "CHANNEL";
         }
 
+        // DB에서 tags 가져와서 병합 (S3에 없는 경우 대비)
+        if (!parsed.tags || parsed.tags.length === 0) {
+          try {
+            const dbReport = await this.reportsRepository.findOne({
+              where: { reportId: roomId },
+              select: { tags: true },
+            });
+            if (dbReport && dbReport.tags) {
+              parsed.tags = dbReport.tags;
+            }
+          } catch (dbErr) {
+            this.logger.warn(`Failed to fetch tags from DB for ${roomId}: ${dbErr.message}`);
+          }
+        }
+
         return parsed;
       } catch (error) {
         this.logger.warn(`Report JSON not found at key=${key}, try next`);
       }
     }
 
-    throw new NotFoundException(
-      `Report details not found in S3 for ID ${roomId}`
-    );
+    // S3에 파일이 없으면 DB에서 기본 정보 가져오기 (fallback)
+    this.logger.warn(`S3 data not found for ${roomId}, falling back to DB`);
+
+    const dbReport = await this.reportsRepository.findOne({
+      where: { reportId: roomId },
+    });
+
+    if (!dbReport) {
+      throw new NotFoundException(
+        `Report not found for ID ${roomId}`
+      );
+    }
+
+    // DB 데이터를 ReportDetails 형식으로 변환
+    const details: ReportDetails & { summary?: string } = {
+      reportId: dbReport.reportId,
+      roomId: dbReport.roomId,
+      channelId: dbReport.channelId,
+      topic: dbReport.topic,
+      description: dbReport.description || undefined,
+      attendees: dbReport.attendees || [],
+      tags: dbReport.tags || [],
+      createdAt: dbReport.createdAt.toISOString(),
+      shareScope: (dbReport.shareScope as "CHANNEL" | "PRIVATE") || "CHANNEL",
+      uploadFileList: [],
+      summary: undefined,
+    };
+
+    return details;
   }
 
   async downloadFileFromS3(fileUrl: string): Promise<{

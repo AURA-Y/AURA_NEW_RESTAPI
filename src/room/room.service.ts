@@ -46,6 +46,7 @@ export class RoomService {
       roomShareLink: this.generateShareLink(data.roomId),
       attendees: data.attendees || [],
       token: data.token || null,
+      tags: data.tags || [],
     });
     return this.roomRepository.save(room);
   }
@@ -267,5 +268,75 @@ export class RoomService {
 
     // 유저 제한인 경우 - 사용자 ID가 포함되어 있는지 확인
     return room.participantUserIds.includes(userId);
+  }
+
+  /**
+   * 채널 내 태그로 방 검색 (AND 조건: 모든 태그 포함)
+   */
+  async searchRoomsByTags(channelId: string, tags: string[]): Promise<Room[]> {
+    if (!tags || tags.length === 0) {
+      return this.getRoomsByChannelId(channelId);
+    }
+
+    const queryBuilder = this.roomRepository
+      .createQueryBuilder("room")
+      .leftJoinAndSelect("room.master", "master")
+      .leftJoinAndSelect("room.team", "team")
+      .where("room.channelId = :channelId", { channelId });
+
+    // 각 태그가 tags 배열에 포함되어 있는지 확인 (AND 조건)
+    tags.forEach((tag, index) => {
+      queryBuilder.andWhere(`:tag${index} = ANY(room.tags)`, { [`tag${index}`]: tag });
+    });
+
+    return queryBuilder
+      .orderBy("room.createdAt", "DESC")
+      .getMany();
+  }
+
+  /**
+   * 채널 내 모든 태그 목록 조회 (자동완성용)
+   */
+  async getTagsByChannel(channelId: string): Promise<string[]> {
+    const rooms = await this.roomRepository.find({
+      where: { channelId },
+      select: ["tags"],
+    });
+
+    // 모든 태그를 합치고 중복 제거
+    const allTags = rooms.flatMap(room => room.tags || []);
+    const uniqueTags = [...new Set(allTags)];
+    return uniqueTags.sort();
+  }
+
+  /**
+   * 키워드로 방 검색 (제목, 설명, 태그)
+   */
+  async searchRooms(channelId: string, keyword?: string, tags?: string[]): Promise<Room[]> {
+    const queryBuilder = this.roomRepository
+      .createQueryBuilder("room")
+      .leftJoinAndSelect("room.master", "master")
+      .leftJoinAndSelect("room.team", "team")
+      .where("room.channelId = :channelId", { channelId });
+
+    // 키워드 검색 (제목 또는 설명에 포함)
+    if (keyword && keyword.trim()) {
+      const searchKeyword = `%${keyword.trim()}%`;
+      queryBuilder.andWhere(
+        "(room.roomTopic ILIKE :keyword OR room.roomDescription ILIKE :keyword)",
+        { keyword: searchKeyword }
+      );
+    }
+
+    // 태그 필터링 (AND 조건)
+    if (tags && tags.length > 0) {
+      tags.forEach((tag, index) => {
+        queryBuilder.andWhere(`:tag${index} = ANY(room.tags)`, { [`tag${index}`]: tag });
+      });
+    }
+
+    return queryBuilder
+      .orderBy("room.createdAt", "DESC")
+      .getMany();
   }
 }
