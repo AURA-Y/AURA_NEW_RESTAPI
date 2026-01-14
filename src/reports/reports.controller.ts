@@ -116,6 +116,16 @@ export class ReportsController {
     return this.reportsService.abortMultipartUpload(body);
   }
 
+  // 파일 다운로드/미리보기용 Presigned URL 발급
+  @Post("file/presign")
+  @UseGuards(JwtAuthGuard)
+  async getFilePresignedUrl(@Body() body: { fileUrl: string }) {
+    const presignedUrl = await this.reportsService.getPresignedDownloadUrl(
+      body.fileUrl
+    );
+    return { presignedUrl };
+  }
+
   // 보고서 요약 업데이트
   @Patch(":id/summary")
   @UseGuards(JwtAuthGuard)
@@ -238,6 +248,14 @@ export class ReportsController {
     });
 
     return new StreamableFile(stream);
+  }
+
+  // S3 파일 Presigned URL 발급 (PDF 미리보기용)
+  @Post("file/presign")
+  @UseGuards(JwtAuthGuard)
+  async getPresignedUrl(@Body() body: { fileUrl: string }) {
+    const presignedUrl = await this.reportsService.getPresignedDownloadUrl(body.fileUrl);
+    return { presignedUrl };
   }
 
   // S3에서 리포트 상세 정보 조회 (접근 권한 확인)

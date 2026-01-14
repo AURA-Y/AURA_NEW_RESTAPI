@@ -7,7 +7,6 @@ import { InjectRepository } from "@nestjs/typeorm";
 import { Repository, Brackets } from "typeorm";
 import { Room } from "./entities/room.entity";
 import { RoomReport } from "./entities/room-report.entity";
-import { File } from "./entities/file.entity";
 import { ChannelMember } from "../channel/entities/channel-member.entity";
 import { CreateRoomDto } from "./dto/create-room.dto";
 
@@ -18,8 +17,6 @@ export class RoomService {
     private roomRepository: Repository<Room>,
     @InjectRepository(RoomReport)
     private roomReportRepository: Repository<RoomReport>,
-    @InjectRepository(File)
-    private fileRepository: Repository<File>,
     @InjectRepository(ChannelMember)
     private channelMemberRepository: Repository<ChannelMember>,
   ) { }
@@ -47,6 +44,7 @@ export class RoomService {
       attendees: data.attendees || [],
       token: data.token || null,
       tags: data.tags || [],
+      uploadFileList: data.uploadFileList || [],
     });
     return this.roomRepository.save(room);
   }
@@ -136,8 +134,6 @@ export class RoomService {
       }
     }
 
-    // File 삭제
-    await this.fileRepository.delete({ roomId });
     // Room 삭제 (RoomReport는 FK 없이 독립적으로 유지됨)
     await this.roomRepository.delete({ roomId });
   }

@@ -424,6 +424,49 @@ export class ReportsService {
     return { aborted: true };
   }
 
+  /**
+   * 파일 URL에서 Presigned URL 생성 (다운로드/미리보기용)
+   * @param fileUrl S3 파일 URL
+   * @param expiresIn 만료 시간 (초), 기본 1시간
+   */
+  async getPresignedDownloadUrl(
+    fileUrl: string,
+    expiresIn: number = 3600
+  ): Promise<string> {
+    try {
+      // S3 URL에서 key 추출 (downloadFileFromS3와 동일한 로직)
+      const url = new URL(fileUrl);
+      const pathParts = url.pathname.split("/").filter((p) => p);
+
+      // path-style URL인 경우 버킷명이 경로에 포함될 수 있음
+      const normalizedParts =
+        pathParts[0] === this.bucketName ? pathParts.slice(1) : pathParts;
+
+      const s3Key = normalizedParts.join("/");
+
+      this.logger.log(
+        `[getPresignedDownloadUrl] fileUrl=${fileUrl}, bucket=${this.bucketName}, key=${s3Key}`
+      );
+
+      const command = new GetObjectCommand({
+        Bucket: this.bucketName,
+        Key: s3Key,
+      });
+
+      const presignedUrl = await getSignedUrl(this.s3Client, command, {
+        expiresIn,
+      });
+
+      return presignedUrl;
+    } catch (error) {
+      this.logger.error(
+        `[getPresignedDownloadUrl] Failed to generate presigned URL for ${fileUrl}`,
+        error as Error
+      );
+      throw error;
+    }
+  }
+
   // 보고서 생성: DB 메타 + S3 JSON 기록
   async createReport(payload: {
     roomId: string;
