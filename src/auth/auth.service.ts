@@ -19,12 +19,13 @@ import { AuthResponseDto } from './dto/auth-response.dto';
 // 기본 채널 ID (모든 신규 사용자가 자동으로 가입되는 채널)
 const DEFAULT_CHANNEL_ID = 'ba13a3bf-0844-45b0-a408-96cd4186cad5';
 
-// Google OAuth 스코프 (프로필 + 캘린더 읽기/쓰기)
+// Google OAuth 스코프 (프로필 + 캘린더 읽기/쓰기/공유)
 const GOOGLE_SCOPES = [
   'https://www.googleapis.com/auth/userinfo.email',
   'https://www.googleapis.com/auth/userinfo.profile',
   'https://www.googleapis.com/auth/calendar.readonly',
   'https://www.googleapis.com/auth/calendar.events',  // 일정 생성/수정/삭제 권한
+  'https://www.googleapis.com/auth/calendar.acls',    // 캘린더 공유 권한
 ];
 
 @Injectable()

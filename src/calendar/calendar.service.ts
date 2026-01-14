@@ -11,10 +11,11 @@ import { Room } from '../room/entities/room.entity';
 const CALENDAR_ID = 'f2b4581e2663a2be54d0d277919a3a0ee2fe1d2c6734511d37636f33a8f7315b@group.calendar.google.com';
 const SERVICE_ACCOUNT_EMAIL = 'aura-29@bamboo-climate-384705.iam.gserviceaccount.com';
 
-// OAuth 스코프 (읽기 + 쓰기 권한)
+// OAuth 스코프 (읽기 + 쓰기 + 공유 권한)
 const SCOPES = [
   'https://www.googleapis.com/auth/calendar.readonly',
   'https://www.googleapis.com/auth/calendar.events',  // 일정 생성/수정/삭제 권한
+  'https://www.googleapis.com/auth/calendar.acls',    // 캘린더 공유 권한
 ];
 
 @Injectable()
@@ -635,6 +636,8 @@ export class CalendarService implements OnModuleInit {
 
   /**
    * 여러 사용자의 일정을 합쳐서 공통 빈 시간대 찾기
+   * @param startHour 업무 시작 시간 (기본: 9)
+   * @param endHour 업무 종료 시간 (기본: 18)
    */
   async findCommonFreeSlots(
     userIdentifiers: string[],
@@ -642,9 +645,11 @@ export class CalendarService implements OnModuleInit {
       timeMin: string;
       timeMax: string;
       durationMinutes?: number;
+      startHour?: number;
+      endHour?: number;
     },
   ): Promise<{ start: string; end: string }[]> {
-    const { timeMin, timeMax, durationMinutes = 60 } = params;
+    const { timeMin, timeMax, durationMinutes = 60, startHour = 9, endHour = 18 } = params;
     const allEvents: { start: Date; end: Date }[] = [];
 
     // 모든 사용자의 일정 수집
@@ -675,35 +680,258 @@ export class CalendarService implements OnModuleInit {
     // 일정 정렬
     allEvents.sort((a, b) => a.start.getTime() - b.start.getTime());
 
-    // 빈 시간대 찾기
+    // 빈 시간대 찾기 (업무 시간 내에서만)
     const freeSlots: { start: string; end: string }[] = [];
-    let currentTime = new Date(timeMin);
-    const endTime = new Date(timeMax);
+    const rangeStart = new Date(timeMin);
+    const rangeEnd = new Date(timeMax);
     const durationMs = durationMinutes * 60 * 1000;
 
-    for (const event of allEvents) {
-      // 현재 시점부터 이벤트 시작까지 빈 시간이 있는지
-      if (event.start.getTime() - currentTime.getTime() >= durationMs) {
-        freeSlots.push({
-          start: currentTime.toISOString(),
-          end: event.start.toISOString(),
-        });
-      }
-      // 현재 시점 업데이트
-      if (event.end > currentTime) {
-        currentTime = event.end;
-      }
-    }
+    // 날짜별로 처리
+    const currentDate = new Date(rangeStart);
+    currentDate.setHours(0, 0, 0, 0);
 
-    // 마지막 이벤트 이후 빈 시간
-    if (endTime.getTime() - currentTime.getTime() >= durationMs) {
-      freeSlots.push({
-        start: currentTime.toISOString(),
-        end: endTime.toISOString(),
-      });
+    while (currentDate <= rangeEnd) {
+      // 해당 날짜의 업무 시작/종료 시간 설정
+      const dayStart = new Date(currentDate);
+      dayStart.setHours(startHour, 0, 0, 0);
+
+      const dayEnd = new Date(currentDate);
+      dayEnd.setHours(endHour, 0, 0, 0);
+
+      // 범위 조정
+      const effectiveStart = dayStart < rangeStart ? rangeStart : dayStart;
+      const effectiveEnd = dayEnd > rangeEnd ? rangeEnd : dayEnd;
+
+      if (effectiveStart < effectiveEnd) {
+        // 해당 날짜의 이벤트 필터링
+        const dayEvents = allEvents.filter(
+          (e) => e.start < effectiveEnd && e.end > effectiveStart,
+        );
+
+        let currentTime = effectiveStart;
+
+        for (const event of dayEvents) {
+          const eventStart = event.start < effectiveStart ? effectiveStart : event.start;
+          const eventEnd = event.end > effectiveEnd ? effectiveEnd : event.end;
+
+          // 현재 시점부터 이벤트 시작까지 빈 시간이 있는지
+          if (eventStart.getTime() - currentTime.getTime() >= durationMs) {
+            freeSlots.push({
+              start: currentTime.toISOString(),
+              end: eventStart.toISOString(),
+            });
+          }
+          // 현재 시점 업데이트
+          if (eventEnd > currentTime) {
+            currentTime = eventEnd;
+          }
+        }
+
+        // 업무 종료 시간까지 빈 시간이 있으면 추가
+        if (effectiveEnd.getTime() - currentTime.getTime() >= durationMs) {
+          freeSlots.push({
+            start: currentTime.toISOString(),
+            end: effectiveEnd.toISOString(),
+          });
+        }
+      }
+
+      // 다음 날로 이동
+      currentDate.setDate(currentDate.getDate() + 1);
     }
 
     return freeSlots;
+  }
+
+  // ==================== 캘린더 공유 관련 메서드 ====================
+  // 캘린더 공유 권한 유형:
+  // - freeBusyReader: 한가함/바쁨 정보만 볼 수 있음
+  // - reader: 일정 세부 정보 읽기 가능
+  // - writer: 일정 읽기/쓰기 가능
+
+  /**
+   * 사용자의 캘린더를 다른 사용자와 공유
+   * @param userId 캘린더 소유자의 userId
+   * @param targetEmail 공유 대상의 이메일 주소
+   * @param role 권한 수준 (기본: reader)
+   * @param calendarId 캘린더 ID (기본: primary)
+   */
+  async shareCalendar(
+    userId: string,
+    targetEmail: string,
+    role: 'freeBusyReader' | 'reader' | 'writer' = 'reader',
+    calendarId: string = 'primary',
+  ): Promise<{ success: boolean; ruleId?: string; error?: string }> {
+    try {
+      const oauth2Client = await this.getUserOAuth2Client(userId);
+      const calendar = google.calendar({ version: 'v3', auth: oauth2Client });
+
+      const response = await calendar.acl.insert({
+        calendarId,
+        requestBody: {
+          role,
+          scope: {
+            type: 'user',
+            value: targetEmail,
+          },
+        },
+        sendNotifications: true, // 공유 초대 알림 전송
+      });
+
+      this.logger.log(`[캘린더공유] ${userId}의 캘린더를 ${targetEmail}에게 공유 (권한: ${role})`);
+      return { success: true, ruleId: response.data.id || undefined };
+    } catch (error) {
+      this.logger.error(`[캘린더공유] 실패: ${error.message}`);
+      return { success: false, error: error.message };
+    }
+  }
+
+  /**
+   * 캘린더 공유 해제
+   * @param userId 캘린더 소유자의 userId
+   * @param ruleId ACL 규칙 ID (또는 user:email 형식)
+   * @param calendarId 캘린더 ID (기본: primary)
+   */
+  async unshareCalendar(
+    userId: string,
+    ruleId: string,
+    calendarId: string = 'primary',
+  ): Promise<{ success: boolean; error?: string }> {
+    try {
+      const oauth2Client = await this.getUserOAuth2Client(userId);
+      const calendar = google.calendar({ version: 'v3', auth: oauth2Client });
+
+      await calendar.acl.delete({
+        calendarId,
+        ruleId,
+      });
+
+      this.logger.log(`[캘린더공유] ${userId}의 캘린더 공유 해제: ${ruleId}`);
+      return { success: true };
+    } catch (error) {
+      this.logger.error(`[캘린더공유 해제] 실패: ${error.message}`);
+      return { success: false, error: error.message };
+    }
+  }
+
+  /**
+   * 캘린더 공유 목록 조회
+   * @param userId 캘린더 소유자의 userId
+   * @param calendarId 캘린더 ID (기본: primary)
+   */
+  async getSharedUsers(
+    userId: string,
+    calendarId: string = 'primary',
+  ): Promise<{ email: string; role: string; ruleId: string }[]> {
+    try {
+      const oauth2Client = await this.getUserOAuth2Client(userId);
+      const calendar = google.calendar({ version: 'v3', auth: oauth2Client });
+
+      const response = await calendar.acl.list({
+        calendarId,
+      });
+
+      const sharedUsers = (response.data.items || [])
+        .filter((item) => item.scope?.type === 'user' && item.scope?.value)
+        .map((item) => ({
+          email: item.scope!.value!,
+          role: item.role || 'reader',
+          ruleId: item.id || '',
+        }));
+
+      this.logger.log(`[캘린더공유] ${userId}의 공유 목록: ${sharedUsers.length}명`);
+      return sharedUsers;
+    } catch (error) {
+      this.logger.error(`[캘린더공유 목록] 조회 실패: ${error.message}`);
+      return [];
+    }
+  }
+
+  /**
+   * Room/Channel 멤버들에게 캘린더 공유
+   * @param userId 캘린더 소유자의 userId
+   * @param targetUserIds 공유 대상 userId 목록
+   * @param role 권한 수준
+   */
+  async shareCalendarWithMembers(
+    userId: string,
+    targetUserIds: string[],
+    role: 'freeBusyReader' | 'reader' | 'writer' = 'reader',
+  ): Promise<{ userId: string; email?: string; success: boolean; error?: string }[]> {
+    const results: { userId: string; email?: string; success: boolean; error?: string }[] = [];
+
+    for (const targetUserId of targetUserIds) {
+      try {
+        // 대상 사용자의 이메일 조회
+        const targetUser = await this.userRepository.findOne({
+          where: { userId: targetUserId },
+          select: ['userId', 'email'],
+        });
+
+        if (!targetUser || !targetUser.email) {
+          results.push({ userId: targetUserId, success: false, error: '사용자 이메일을 찾을 수 없습니다' });
+          continue;
+        }
+
+        const shareResult = await this.shareCalendar(userId, targetUser.email, role);
+        results.push({
+          userId: targetUserId,
+          email: targetUser.email,
+          success: shareResult.success,
+          error: shareResult.error,
+        });
+      } catch (error) {
+        results.push({ userId: targetUserId, success: false, error: error.message });
+      }
+    }
+
+    const successCount = results.filter((r) => r.success).length;
+    this.logger.log(`[캘린더공유] ${userId}의 캘린더를 ${successCount}/${targetUserIds.length}명에게 공유`);
+
+    return results;
+  }
+
+  /**
+   * Room 참여자들에게 캘린더 공유
+   * - participantUserIds에 있는 사용자들에게만 공유
+   * - participantUserIds가 비어있으면 masterId만 대상
+   */
+  async shareCalendarWithRoomParticipants(
+    userId: string,
+    roomId: string,
+    role: 'freeBusyReader' | 'reader' | 'writer' = 'reader',
+  ): Promise<{ userId: string; email?: string; success: boolean; error?: string }[]> {
+    const room = await this.roomRepository.findOne({
+      where: { roomId },
+      select: ['roomId', 'participantUserIds', 'masterId'],
+    });
+
+    if (!room) {
+      this.logger.warn(`[캘린더공유] Room을 찾을 수 없음: ${roomId}`);
+      return [{ userId: roomId, success: false, error: 'Room을 찾을 수 없습니다' }];
+    }
+
+    this.logger.log(`[캘린더공유] Room ${roomId} - participantUserIds: ${room.participantUserIds?.length || 0}명, masterId: ${room.masterId}`);
+
+    // Room의 participantUserIds 사용 (비어있으면 masterId만)
+    let targetUserIds: string[] = [];
+
+    if (room.participantUserIds && room.participantUserIds.length > 0) {
+      targetUserIds = [...room.participantUserIds];
+    } else {
+      // participantUserIds가 비어있으면 방장만 포함
+      targetUserIds = [room.masterId];
+    }
+
+    // 자기 자신 제외
+    targetUserIds = targetUserIds.filter((id) => id !== userId);
+
+    if (targetUserIds.length === 0) {
+      return [{ userId, success: false, error: '공유할 대상이 없습니다 (Room에 본인만 있습니다)' }];
+    }
+
+    this.logger.log(`[캘린더공유] 공유 대상: ${targetUserIds.length}명 - ${targetUserIds.join(', ')}`);
+    return this.shareCalendarWithMembers(userId, targetUserIds, role);
   }
 
   // ==================== Service Account (공용 캘린더) 메서드 - 기존 유지 ====================

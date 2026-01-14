@@ -261,6 +261,8 @@ export class CalendarController {
       timeMin: string;
       timeMax: string;
       durationMinutes?: number;
+      startHour?: number; // 업무 시작 시간 (기본: 9)
+      endHour?: number;   // 업무 종료 시간 (기본: 18)
     },
   ) {
     const freeSlots = await this.calendarService.findCommonFreeSlots(
@@ -269,6 +271,8 @@ export class CalendarController {
         timeMin: body.timeMin,
         timeMax: body.timeMax,
         durationMinutes: body.durationMinutes,
+        startHour: body.startHour,
+        endHour: body.endHour,
       },
     );
 
@@ -346,6 +350,144 @@ export class CalendarController {
     return {
       status: 'ok',
       message: `${successCount}명의 캘린더에 일정이 추가되었습니다.${failCount > 0 ? ` (${failCount}명 실패)` : ''}`,
+      results,
+    };
+  }
+
+  // ==================== 캘린더 공유 관련 엔드포인트 ====================
+
+  /**
+   * 캘린더 공유 목록 조회
+   * GET /calendar/share
+   */
+  @Get('share')
+  @UseGuards(JwtAuthGuard)
+  async getSharedUsers(@Req() req: AuthenticatedRequest) {
+    const userId = req.user.userId;
+    const sharedUsers = await this.calendarService.getSharedUsers(userId);
+
+    return {
+      status: 'ok',
+      sharedUsers,
+    };
+  }
+
+  /**
+   * 특정 사용자에게 캘린더 공유
+   * POST /calendar/share
+   */
+  @Post('share')
+  @UseGuards(JwtAuthGuard)
+  async shareCalendar(
+    @Req() req: AuthenticatedRequest,
+    @Body() body: {
+      targetEmail: string;
+      role?: 'freeBusyReader' | 'reader' | 'writer';
+    },
+  ) {
+    const userId = req.user.userId;
+    const result = await this.calendarService.shareCalendar(
+      userId,
+      body.targetEmail,
+      body.role || 'reader',
+    );
+
+    if (result.success) {
+      return {
+        status: 'ok',
+        message: `${body.targetEmail}에게 캘린더를 공유했습니다.`,
+        ruleId: result.ruleId,
+      };
+    } else {
+      return {
+        status: 'error',
+        message: result.error || '캘린더 공유에 실패했습니다.',
+      };
+    }
+  }
+
+  /**
+   * 캘린더 공유 해제
+   * DELETE /calendar/share/:ruleId
+   */
+  @Delete('share/:ruleId')
+  @UseGuards(JwtAuthGuard)
+  async unshareCalendar(
+    @Req() req: AuthenticatedRequest,
+    @Param('ruleId') ruleId: string,
+  ) {
+    const userId = req.user.userId;
+    const result = await this.calendarService.unshareCalendar(userId, ruleId);
+
+    if (result.success) {
+      return {
+        status: 'ok',
+        message: '캘린더 공유가 해제되었습니다.',
+      };
+    } else {
+      return {
+        status: 'error',
+        message: result.error || '캘린더 공유 해제에 실패했습니다.',
+      };
+    }
+  }
+
+  /**
+   * 여러 사용자에게 캘린더 공유 (userId 목록으로)
+   * POST /calendar/share/members
+   */
+  @Post('share/members')
+  @UseGuards(JwtAuthGuard)
+  async shareCalendarWithMembers(
+    @Req() req: AuthenticatedRequest,
+    @Body() body: {
+      targetUserIds: string[];
+      role?: 'freeBusyReader' | 'reader' | 'writer';
+    },
+  ) {
+    const userId = req.user.userId;
+    const results = await this.calendarService.shareCalendarWithMembers(
+      userId,
+      body.targetUserIds,
+      body.role || 'reader',
+    );
+
+    const successCount = results.filter(r => r.success).length;
+    const failCount = results.filter(r => !r.success).length;
+
+    return {
+      status: 'ok',
+      message: `${successCount}명에게 캘린더를 공유했습니다.${failCount > 0 ? ` (${failCount}명 실패)` : ''}`,
+      results,
+    };
+  }
+
+  /**
+   * Room 참여자들에게 캘린더 공유
+   * POST /calendar/share/room/:roomId
+   */
+  @Post('share/room/:roomId')
+  @UseGuards(JwtAuthGuard)
+  async shareCalendarWithRoom(
+    @Req() req: AuthenticatedRequest,
+    @Param('roomId') roomId: string,
+    @Body() body: {
+      role?: 'freeBusyReader' | 'reader' | 'writer';
+    },
+  ) {
+    const userId = req.user.userId;
+    const results = await this.calendarService.shareCalendarWithRoomParticipants(
+      userId,
+      roomId,
+      body.role || 'reader',
+    );
+
+    const successCount = results.filter(r => r.success).length;
+    const failCount = results.filter(r => !r.success).length;
+
+    return {
+      status: 'ok',
+      message: `Room 참여자 ${successCount}명에게 캘린더를 공유했습니다.${failCount > 0 ? ` (${failCount}명 실패)` : ''}`,
       results,
     };
   }
