@@ -6,14 +6,14 @@ import { google, calendar_v3 } from 'googleapis';
 import { OAuth2Client } from 'google-auth-library';
 import { User } from '../auth/entities/user.entity';
 
-// 공용 캘린더 ID (Service Account용 - 기존 유지)
-const CALENDAR_ID = 'd4faa91b83282cf8b377bb5ca7f586cd83959897fa544b3133f8e39c9cf42443@group.calendar.google.com';
+// 공용 캘린더 ID (Service Account용)
+const CALENDAR_ID = 'f2b4581e2663a2be54d0d277919a3a0ee2fe1d2c6734511d37636f33a8f7315b@group.calendar.google.com';
 const SERVICE_ACCOUNT_EMAIL = 'aura-29@bamboo-climate-384705.iam.gserviceaccount.com';
 
-// OAuth 스코프
+// OAuth 스코프 (읽기 + 쓰기 권한)
 const SCOPES = [
   'https://www.googleapis.com/auth/calendar.readonly',
-  'https://www.googleapis.com/auth/calendar.events.readonly',
+  'https://www.googleapis.com/auth/calendar.events',  // 일정 생성/수정/삭제 권한
 ];
 
 @Injectable()
@@ -30,15 +30,25 @@ export class CalendarService implements OnModuleInit {
 
   onModuleInit() {
     // 1. Service Account 초기화 (기존 공용 캘린더용)
-    const privateKey = process.env.GOOGLE_SERVICE_ACCOUNT_PRIVATE_KEY;
-    if (privateKey) {
+    const rawPrivateKey = this.configService.get<string>('GOOGLE_SERVICE_ACCOUNT_PRIVATE_KEY');
+    if (rawPrivateKey) {
+      // Docker 환경에서 \n이 리터럴 문자열로 전달될 수 있으므로 처리
+      // 따옴표 제거 및 줄바꿈 변환
+      const privateKey = rawPrivateKey
+        .replace(/^["']|["']$/g, '') // 앞뒤 따옴표 제거
+        .replace(/\\n/g, '\n');       // \n 문자열을 실제 줄바꿈으로 변환
+
+      this.logger.log(`Private key length: ${privateKey.length}, starts with: ${privateKey.substring(0, 30)}`);
+
       const auth = new google.auth.JWT({
         email: SERVICE_ACCOUNT_EMAIL,
-        key: privateKey.replace(/\\n/g, '\n'),
+        key: privateKey,
         scopes: ['https://www.googleapis.com/auth/calendar'],
       });
       this.calendar = google.calendar({ version: 'v3', auth });
       this.logger.log('Google Calendar service initialized (Service Account)');
+    } else {
+      this.logger.warn('GOOGLE_SERVICE_ACCOUNT_PRIVATE_KEY not configured - public calendar disabled');
     }
 
     // 2. OAuth2 클라이언트 초기화 (개인 캘린더용)

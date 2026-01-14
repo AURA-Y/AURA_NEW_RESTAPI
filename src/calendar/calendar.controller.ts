@@ -168,6 +168,32 @@ export class CalendarController {
   }
 
   /**
+   * 사용자 개인 캘린더에 일정 추가
+   * POST /calendar/user/events
+   */
+  @Post('user/events')
+  @UseGuards(JwtAuthGuard)
+  async addUserEvent(
+    @Req() req: AuthenticatedRequest,
+    @Body() dto: AddEventDto,
+  ) {
+    const userId = req.user.userId;
+    const event = await this.calendarService.addUserEvent(userId, dto);
+
+    return {
+      status: 'ok',
+      message: '개인 캘린더에 일정이 추가되었습니다.',
+      event: {
+        id: event.id,
+        title: event.summary,
+        start: event.start,
+        end: event.end,
+        link: event.htmlLink,
+      },
+    };
+  }
+
+  /**
    * 공통 빈 시간대 찾기 (여러 사용자)
    * POST /calendar/find-free-slots
    */
