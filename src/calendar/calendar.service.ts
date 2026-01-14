@@ -5,6 +5,7 @@ import { ConfigService } from '@nestjs/config';
 import { google, calendar_v3 } from 'googleapis';
 import { OAuth2Client } from 'google-auth-library';
 import { User } from '../auth/entities/user.entity';
+import { Room } from '../room/entities/room.entity';
 
 // 공용 캘린더 ID (Service Account용)
 const CALENDAR_ID = 'f2b4581e2663a2be54d0d277919a3a0ee2fe1d2c6734511d37636f33a8f7315b@group.calendar.google.com';
@@ -25,6 +26,8 @@ export class CalendarService implements OnModuleInit {
   constructor(
     @InjectRepository(User)
     private userRepository: Repository<User>,
+    @InjectRepository(Room)
+    private roomRepository: Repository<Room>,
     private configService: ConfigService,
   ) {}
 
@@ -329,6 +332,59 @@ export class CalendarService implements OnModuleInit {
     const [, ...userResults] = await Promise.all([publicCalendarPromise, ...userPromises]);
 
     return userResults as { userId: string; success: boolean; eventId?: string; error?: string }[];
+  }
+
+  /**
+   * Room의 참여자들 개인 캘린더에 일정 추가
+   * participantUserIds가 비어있으면 채널 전체 공개이므로 masterId만 추가
+   */
+  async addEventToRoomParticipants(
+    roomId: string,
+    params: {
+      title: string;
+      date: string;
+      time?: string;
+      description?: string;
+      durationMinutes?: number;
+    },
+  ): Promise<{ userId: string; success: boolean; eventId?: string; error?: string }[]> {
+    // Room 조회
+    const room = await this.roomRepository.findOne({
+      where: { roomId },
+      select: ['roomId', 'roomTopic', 'participantUserIds', 'masterId'],
+    });
+
+    if (!room) {
+      this.logger.warn(`[캘린더] Room을 찾을 수 없음: ${roomId}`);
+      return [{ userId: roomId, success: false, error: 'Room을 찾을 수 없습니다' }];
+    }
+
+    // 참여자 목록 결정
+    // participantUserIds가 비어있으면 masterId만 사용
+    const userIds = room.participantUserIds.length > 0
+      ? room.participantUserIds
+      : [room.masterId];
+
+    this.logger.log(`[캘린더] Room ${roomId} 참여자 ${userIds.length}명에게 일정 추가: ${params.title}`);
+
+    // 각 참여자의 개인 캘린더에 추가
+    const results = await Promise.all(
+      userIds.map(async (userId) => {
+        try {
+          const event = await this.addUserEvent(userId, params);
+          return { userId, success: true, eventId: event.id || undefined };
+        } catch (error) {
+          this.logger.warn(`[개인캘린더] 일정 추가 실패 (${userId}): ${error.message}`);
+          return { userId, success: false, error: error.message };
+        }
+      }),
+    );
+
+    const successCount = results.filter(r => r.success).length;
+    const failCount = results.filter(r => !r.success).length;
+    this.logger.log(`[캘린더] Room ${roomId} 일정 추가 완료: ${successCount}명 성공, ${failCount}명 실패`);
+
+    return results;
   }
 
   /**

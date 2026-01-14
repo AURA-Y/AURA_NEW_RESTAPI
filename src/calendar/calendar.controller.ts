@@ -194,6 +194,28 @@ export class CalendarController {
   }
 
   /**
+   * Room 참여자들의 개인 캘린더에 일정 추가
+   * POST /calendar/room/:roomId/events
+   */
+  @Post('room/:roomId/events')
+  @UseGuards(JwtAuthGuard)
+  async addEventToRoom(
+    @Param('roomId') roomId: string,
+    @Body() dto: AddEventDto,
+  ) {
+    const results = await this.calendarService.addEventToRoomParticipants(roomId, dto);
+
+    const successCount = results.filter(r => r.success).length;
+    const failCount = results.filter(r => !r.success).length;
+
+    return {
+      status: 'ok',
+      message: `${successCount}명의 캘린더에 일정이 추가되었습니다.${failCount > 0 ? ` (${failCount}명 실패)` : ''}`,
+      results,
+    };
+  }
+
+  /**
    * 공통 빈 시간대 찾기 (여러 사용자)
    * POST /calendar/find-free-slots
    */
