@@ -1,4 +1,4 @@
-import { Module } from '@nestjs/common';
+import { Module, forwardRef } from '@nestjs/common';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { SseController } from './sse.controller';
 import { SseService } from './sse.service';
@@ -10,7 +10,7 @@ import { ReportsModule } from '../reports/reports.module';
 @Module({
   imports: [
     TypeOrmModule.forFeature([User, Room, RoomReport]),
-    ReportsModule,
+    forwardRef(() => ReportsModule),
   ],
   controllers: [SseController],
   providers: [SseService],

@@ -60,6 +60,130 @@ export class SseService {
     return false;
   }
 
+  // 회의 생성 알림 처리 (participantUserIds에 포함된 유저들에게 알림)
+  async handleMeetingCreated(payload: {
+    roomId: string;
+    roomTopic: string;
+    channelId: string;
+    channelName?: string;
+    masterId: string;
+    masterNickName?: string;
+    participantUserIds: string[];
+  }): Promise<{ notified: string[]; failed: string[] }> {
+    const { roomId, roomTopic, channelId, channelName, masterId, masterNickName, participantUserIds } = payload;
+
+    console.log(`[SSE] ========== handleMeetingCreated 시작 ==========`);
+    console.log(`[SSE] roomId: ${roomId}`);
+    console.log(`[SSE] roomTopic: ${roomTopic}`);
+    console.log(`[SSE] masterId: ${masterId}`);
+    console.log(`[SSE] participantUserIds: ${participantUserIds?.length || 0}명`);
+
+    const notified: string[] = [];
+    const failed: string[] = [];
+
+    // participantUserIds가 비어있으면 (전체 공개) 알림 스킵
+    if (!participantUserIds || participantUserIds.length === 0) {
+      console.log(`[SSE] 전체 공개 회의 - 개별 알림 스킵`);
+      return { notified, failed };
+    }
+
+    const event: NotificationEvent = {
+      type: 'meeting_created',
+      data: {
+        roomId,
+        meetingTopic: roomTopic,  // 프론트엔드 필드명에 맞춤
+        channelId,
+        channelName,
+        createdBy: masterNickName,  // 프론트엔드 필드명에 맞춤
+        createdAt: new Date().toISOString(),
+      },
+    };
+
+    // participantUserIds에 포함된 유저들에게 알림 (생성자 제외)
+    for (const userId of participantUserIds) {
+      // 생성자 본인은 제외
+      if (userId === masterId) {
+        continue;
+      }
+
+      const sent = this.sendToUser(userId, event);
+      if (sent) {
+        notified.push(userId);
+      } else {
+        failed.push(userId);
+      }
+    }
+
+    console.log(`[SSE] Meeting created notification - notified: ${notified.length}, failed: ${failed.length}`);
+    console.log(`[SSE] ========== handleMeetingCreated 종료 ==========`);
+
+    return { notified, failed };
+  }
+
+  // 회의록 생성 알림 처리 (participantUserIds에 포함된 유저들에게 알림)
+  async handleReportCreated(payload: {
+    roomId: string;
+    reportId: string;
+    topic: string;
+    channelId: string;
+    creatorId: string;
+    creatorNickName?: string;
+  }): Promise<{ notified: string[]; failed: string[] }> {
+    const { roomId, reportId, topic, channelId, creatorId, creatorNickName } = payload;
+
+    console.log(`[SSE] ========== handleReportCreated 시작 ==========`);
+    console.log(`[SSE] roomId: ${roomId}, reportId: ${reportId}`);
+    console.log(`[SSE] topic: ${topic}`);
+    console.log(`[SSE] creatorId: ${creatorId}`);
+
+    const notified: string[] = [];
+    const failed: string[] = [];
+
+    // Room에서 participantUserIds 가져오기
+    const room = await this.roomRepository.findOne({
+      where: { roomId },
+      select: ['participantUserIds'],
+    });
+
+    const participantUserIds = room?.participantUserIds || [];
+
+    // participantUserIds가 비어있으면 (전체 공개) 알림 스킵
+    if (!participantUserIds || participantUserIds.length === 0) {
+      console.log(`[SSE] 전체 공개 회의록 - 개별 알림 스킵`);
+      return { notified, failed };
+    }
+
+    const event: NotificationEvent = {
+      type: 'report_complete',  // 기존 프론트엔드 타입 재사용
+      data: {
+        roomId,
+        reportId,
+        meetingTitle: topic,
+        completedAt: new Date().toISOString(),
+      },
+    };
+
+    // participantUserIds에 포함된 유저들에게 알림 (생성자 제외)
+    for (const userId of participantUserIds) {
+      // 생성자 본인은 제외
+      if (userId === creatorId) {
+        continue;
+      }
+
+      const sent = this.sendToUser(userId, event);
+      if (sent) {
+        notified.push(userId);
+      } else {
+        failed.push(userId);
+      }
+    }
+
+    console.log(`[SSE] Report created notification - notified: ${notified.length}, failed: ${failed.length}`);
+    console.log(`[SSE] ========== handleReportCreated 종료 ==========`);
+
+    return { notified, failed };
+  }
+
   // 회의록 완료 알림 처리
   async handleReportComplete(payload: {
     roomId: string;
@@ -71,36 +195,59 @@ export class SseService {
   }): Promise<{ notified: string[]; failed: string[] }> {
     const { roomId, speakers } = payload;
 
-    // 1. attendees 조회 (Room → RoomReport → speakers 순으로 fallback)
+    // 1. attendees, participantUserIds, masterId 조회
     let attendees: string[] = [];
+    let participantUserIds: string[] = [];
+    let masterId: string | null = null;
 
     // Room 테이블에서 조회 (삭제되지 않은 경우)
     const room = await this.roomRepository.findOne({
       where: { roomId: roomId },
-      select: ['attendees'],
+      select: ['attendees', 'participantUserIds', 'masterId'],
     });
 
     if (room?.attendees?.length > 0) {
       attendees = room.attendees;
-    } else {
-      // Room이 없거나 attendees가 비어있으면 RoomReport에서 조회
+    }
+    if (room?.participantUserIds?.length > 0) {
+      participantUserIds = room.participantUserIds;
+    }
+    if (room?.masterId) {
+      masterId = room.masterId;
+    }
+
+    // Room이 없거나 데이터가 비어있으면 RoomReport에서 조회
+    if (attendees.length === 0 || participantUserIds.length === 0) {
       const report = await this.roomReportRepository.findOne({
         where: { reportId: roomId },
-        select: ['attendees'],
+        select: ['attendees', 'participantUserIds'],
       });
 
-      if (report?.attendees?.length > 0) {
+      if (attendees.length === 0 && report?.attendees?.length > 0) {
         attendees = report.attendees;
-      } else if (speakers?.length > 0) {
-        // 둘 다 없으면 speakers로 fallback
-        attendees = speakers;
       }
+      if (participantUserIds.length === 0 && report?.participantUserIds?.length > 0) {
+        participantUserIds = report.participantUserIds;
+      }
+    }
+
+    // attendees가 없으면 speakers로 fallback
+    if (attendees.length === 0 && speakers?.length > 0) {
+      attendees = speakers;
+    }
+
+    // masterId가 participantUserIds에 없으면 추가 (생성자도 알림 받도록)
+    if (masterId && !participantUserIds.includes(masterId)) {
+      participantUserIds = [masterId, ...participantUserIds];
     }
 
     console.log(`[SSE] ========== handleReportComplete 시작 ==========`);
     console.log(`[SSE] roomId: ${roomId}`);
-    console.log(`[SSE] Room 조회 결과:`, room?.attendees || 'Room 없음');
+    console.log(`[SSE] masterId: ${masterId}`);
+    console.log(`[SSE] Room 조회 결과 - attendees:`, room?.attendees || 'Room 없음');
+    console.log(`[SSE] Room 조회 결과 - participantUserIds:`, room?.participantUserIds || 'Room 없음');
     console.log(`[SSE] 최종 attendees:`, attendees);
+    console.log(`[SSE] 최종 participantUserIds (masterId 포함):`, participantUserIds);
     console.log(`[SSE] speakers from payload:`, speakers);
 
     // 2. DB에 attendees 업데이트 (attendees가 있을 때만)
@@ -148,13 +295,68 @@ export class SseService {
     }
     console.log(`[SSE] ========== handleReportComplete 종료 ==========`);
 
-    // 3. SSE 알림 전송
-    if (!attendees || attendees.length === 0) {
-      console.log(`[SSE] No attendees found for room: ${roomId}`);
-      return { notified: [], failed: [] };
+    // 3. SSE 알림 전송 - attendees(닉네임) + participantUserIds(유저ID) 모두에게
+    return this.notifyReportComplete(attendees, participantUserIds, payload);
+  }
+
+  // 회의록 완료 알림 전송 (attendees 닉네임 + participantUserIds 모두에게)
+  private async notifyReportComplete(
+    nicknames: string[],
+    userIds: string[],
+    payload: any,
+  ): Promise<{ notified: string[]; failed: string[] }> {
+    const notified: string[] = [];
+    const failed: string[] = [];
+    const notifiedUserIds = new Set<string>(); // 중복 방지
+
+    const event: NotificationEvent = {
+      type: 'report_complete',
+      data: {
+        roomId: payload.roomId,
+        meetingTitle: payload.meetingTitle,
+        downloadUrl: payload.downloadUrl,
+        completedAt: payload.completedAt,
+      },
+    };
+
+    // 1. participantUserIds로 직접 알림 (권한 있는 유저들)
+    if (userIds && userIds.length > 0) {
+      for (const userId of userIds) {
+        const sent = this.sendToUser(userId, event);
+        if (sent) {
+          notifiedUserIds.add(userId);
+          notified.push(userId);
+        }
+      }
+      console.log(`[SSE] participantUserIds 알림 전송: ${notifiedUserIds.size}명`);
     }
 
-    return this.notifyByNicknames(attendees, payload);
+    // 2. nicknames로 User 조회 후 알림 (실제 참석자들)
+    if (nicknames && nicknames.length > 0) {
+      const users = await this.userRepository.find({
+        where: { nickName: In(nicknames) },
+        select: ['userId', 'nickName'],
+      });
+
+      for (const user of users) {
+        // 이미 알림 보낸 유저는 스킵
+        if (notifiedUserIds.has(user.userId)) {
+          continue;
+        }
+
+        const sent = this.sendToUser(user.userId, event);
+        if (sent) {
+          notifiedUserIds.add(user.userId);
+          notified.push(user.nickName);
+        } else {
+          failed.push(user.nickName);
+        }
+      }
+      console.log(`[SSE] attendees(닉네임) 알림 전송 추가: ${users.length}명 조회, 중복 제외 후 전송`);
+    }
+
+    console.log(`[SSE] Report complete notification - 총 notified: ${notifiedUserIds.size}, failed: ${failed.length}`);
+    return { notified, failed };
   }
 
   // 닉네임 목록으로 알림 전송

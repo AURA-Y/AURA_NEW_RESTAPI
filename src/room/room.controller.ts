@@ -12,18 +12,36 @@ import {
 import { RoomService } from "./room.service";
 import { CreateRoomDto } from "./dto/create-room.dto";
 import { JwtAuthGuard } from "../auth/guards/jwt-auth.guard";
+import { SseService } from "../sse/sse.service";
 
 @Controller("rooms")
 @UseGuards(JwtAuthGuard)
 export class RoomController {
-  constructor(private readonly roomService: RoomService) { }
+  constructor(
+    private readonly roomService: RoomService,
+    private readonly sseService: SseService,
+  ) { }
 
   @Post()
   async createRoom(@Body() createRoomDto: CreateRoomDto, @Request() req) {
-    return this.roomService.createRoom({
+    const room = await this.roomService.createRoom({
       ...createRoomDto,
       masterId: req.user.id,
     });
+
+    // 회의 생성 알림 (participantUserIds에 포함된 유저들에게, 생성자 제외)
+    if (createRoomDto.participantUserIds && createRoomDto.participantUserIds.length > 0) {
+      this.sseService.handleMeetingCreated({
+        roomId: room.roomId,
+        roomTopic: room.roomTopic,
+        channelId: room.channelId,
+        masterId: req.user.id,
+        masterNickName: req.user.nickName,
+        participantUserIds: createRoomDto.participantUserIds,
+      }).catch(err => console.error('[Room] SSE 알림 전송 실패:', err.message));
+    }
+
+    return room;
   }
 
   @Get()
