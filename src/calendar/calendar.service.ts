@@ -231,6 +231,47 @@ export class CalendarService implements OnModuleInit {
   }
 
   /**
+   * 반복 규칙 생성 (RFC 5545 RRULE 형식)
+   * @param recurrence 반복 유형: 'daily' | 'weekly' | 'monthly'
+   * @param repeatCount 반복 횟수 (선택, 없으면 무한 반복)
+   * @param repeatUntil 반복 종료일 (선택, YYYY-MM-DD 형식)
+   */
+  private buildRecurrenceRule(
+    recurrence: 'daily' | 'weekly' | 'monthly',
+    repeatCount?: number,
+    repeatUntil?: string,
+  ): string[] {
+    let rule = 'RRULE:FREQ=';
+
+    switch (recurrence) {
+      case 'daily':
+        rule += 'DAILY';
+        break;
+      case 'weekly':
+        rule += 'WEEKLY';
+        break;
+      case 'monthly':
+        rule += 'MONTHLY';
+        break;
+    }
+
+    // 반복 횟수 지정
+    if (repeatCount && repeatCount > 0) {
+      rule += `;COUNT=${repeatCount}`;
+    }
+    // 반복 종료일 지정 (COUNT보다 우선)
+    else if (repeatUntil) {
+      // UNTIL 형식: YYYYMMDDTHHMMSSZ (UTC)
+      const untilDate = new Date(repeatUntil);
+      untilDate.setHours(23, 59, 59);
+      const untilStr = untilDate.toISOString().replace(/[-:]/g, '').split('.')[0] + 'Z';
+      rule += `;UNTIL=${untilStr}`;
+    }
+
+    return [rule];
+  }
+
+  /**
    * 사용자의 개인 캘린더에 일정 추가 (OAuth)
    */
   async addUserEvent(
@@ -242,12 +283,15 @@ export class CalendarService implements OnModuleInit {
       description?: string;
       durationMinutes?: number;
       attendees?: string[]; // 참석자 이메일 목록
+      recurrence?: 'daily' | 'weekly' | 'monthly'; // 반복 유형
+      repeatCount?: number; // 반복 횟수
+      repeatUntil?: string; // 반복 종료일 (YYYY-MM-DD)
     },
   ): Promise<calendar_v3.Schema$Event> {
     const oauth2Client = await this.getUserOAuth2Client(userId);
     const calendar = google.calendar({ version: 'v3', auth: oauth2Client });
 
-    const { title, date, time, description, durationMinutes = 60, attendees } = params;
+    const { title, date, time, description, durationMinutes = 60, attendees, recurrence, repeatCount, repeatUntil } = params;
 
     let start: calendar_v3.Schema$EventDateTime;
     let end: calendar_v3.Schema$EventDateTime;
@@ -284,13 +328,19 @@ export class CalendarService implements OnModuleInit {
       eventBody.attendees = attendees.map(email => ({ email }));
     }
 
+    // 반복 규칙 추가
+    if (recurrence) {
+      eventBody.recurrence = this.buildRecurrenceRule(recurrence, repeatCount, repeatUntil);
+      this.logger.log(`[개인캘린더] 반복 일정 규칙: ${eventBody.recurrence[0]}`);
+    }
+
     const response = await calendar.events.insert({
       calendarId: 'primary',
       requestBody: eventBody,
       sendUpdates: 'all', // 참석자에게 알림 전송
     });
 
-    this.logger.log(`[개인캘린더] 일정 생성: ${title} on ${date} for user ${userId}`);
+    this.logger.log(`[개인캘린더] 일정 생성: ${title} on ${date} for user ${userId}${recurrence ? ` (반복: ${recurrence})` : ''}`);
     return response.data;
   }
 
@@ -412,6 +462,9 @@ export class CalendarService implements OnModuleInit {
       time?: string;
       description?: string;
       durationMinutes?: number;
+      recurrence?: 'daily' | 'weekly' | 'monthly'; // 반복 유형
+      repeatCount?: number; // 반복 횟수
+      repeatUntil?: string; // 반복 종료일 (YYYY-MM-DD)
     },
   ): Promise<{ userId: string; success: boolean; eventId?: string; error?: string }[]> {
     // Room 조회
