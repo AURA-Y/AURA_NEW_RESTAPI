@@ -5,15 +5,16 @@ import { ConfigService } from '@nestjs/config';
 import { google, calendar_v3 } from 'googleapis';
 import { OAuth2Client } from 'google-auth-library';
 import { User } from '../auth/entities/user.entity';
+import { Room } from '../room/entities/room.entity';
 
-// 공용 캘린더 ID (Service Account용 - 기존 유지)
-const CALENDAR_ID = 'd4faa91b83282cf8b377bb5ca7f586cd83959897fa544b3133f8e39c9cf42443@group.calendar.google.com';
+// 공용 캘린더 ID (Service Account용)
+const CALENDAR_ID = 'f2b4581e2663a2be54d0d277919a3a0ee2fe1d2c6734511d37636f33a8f7315b@group.calendar.google.com';
 const SERVICE_ACCOUNT_EMAIL = 'aura-29@bamboo-climate-384705.iam.gserviceaccount.com';
 
-// OAuth 스코프
+// OAuth 스코프 (읽기 + 쓰기 권한)
 const SCOPES = [
   'https://www.googleapis.com/auth/calendar.readonly',
-  'https://www.googleapis.com/auth/calendar.events.readonly',
+  'https://www.googleapis.com/auth/calendar.events',  // 일정 생성/수정/삭제 권한
 ];
 
 @Injectable()
@@ -25,20 +26,32 @@ export class CalendarService implements OnModuleInit {
   constructor(
     @InjectRepository(User)
     private userRepository: Repository<User>,
+    @InjectRepository(Room)
+    private roomRepository: Repository<Room>,
     private configService: ConfigService,
   ) {}
 
   onModuleInit() {
     // 1. Service Account 초기화 (기존 공용 캘린더용)
-    const privateKey = process.env.GOOGLE_SERVICE_ACCOUNT_PRIVATE_KEY;
-    if (privateKey) {
+    const rawPrivateKey = this.configService.get<string>('GOOGLE_SERVICE_ACCOUNT_PRIVATE_KEY');
+    if (rawPrivateKey) {
+      // Docker 환경에서 \n이 리터럴 문자열로 전달될 수 있으므로 처리
+      // 따옴표 제거 및 줄바꿈 변환
+      const privateKey = rawPrivateKey
+        .replace(/^["']|["']$/g, '') // 앞뒤 따옴표 제거
+        .replace(/\\n/g, '\n');       // \n 문자열을 실제 줄바꿈으로 변환
+
+      this.logger.log(`Private key length: ${privateKey.length}, starts with: ${privateKey.substring(0, 30)}`);
+
       const auth = new google.auth.JWT({
         email: SERVICE_ACCOUNT_EMAIL,
-        key: privateKey.replace(/\\n/g, '\n'),
+        key: privateKey,
         scopes: ['https://www.googleapis.com/auth/calendar'],
       });
       this.calendar = google.calendar({ version: 'v3', auth });
       this.logger.log('Google Calendar service initialized (Service Account)');
+    } else {
+      this.logger.warn('GOOGLE_SERVICE_ACCOUNT_PRIVATE_KEY not configured - public calendar disabled');
     }
 
     // 2. OAuth2 클라이언트 초기화 (개인 캘린더용)
@@ -319,6 +332,59 @@ export class CalendarService implements OnModuleInit {
     const [, ...userResults] = await Promise.all([publicCalendarPromise, ...userPromises]);
 
     return userResults as { userId: string; success: boolean; eventId?: string; error?: string }[];
+  }
+
+  /**
+   * Room의 참여자들 개인 캘린더에 일정 추가
+   * participantUserIds가 비어있으면 채널 전체 공개이므로 masterId만 추가
+   */
+  async addEventToRoomParticipants(
+    roomId: string,
+    params: {
+      title: string;
+      date: string;
+      time?: string;
+      description?: string;
+      durationMinutes?: number;
+    },
+  ): Promise<{ userId: string; success: boolean; eventId?: string; error?: string }[]> {
+    // Room 조회
+    const room = await this.roomRepository.findOne({
+      where: { roomId },
+      select: ['roomId', 'roomTopic', 'participantUserIds', 'masterId'],
+    });
+
+    if (!room) {
+      this.logger.warn(`[캘린더] Room을 찾을 수 없음: ${roomId}`);
+      return [{ userId: roomId, success: false, error: 'Room을 찾을 수 없습니다' }];
+    }
+
+    // 참여자 목록 결정
+    // participantUserIds가 비어있으면 masterId만 사용
+    const userIds = room.participantUserIds.length > 0
+      ? room.participantUserIds
+      : [room.masterId];
+
+    this.logger.log(`[캘린더] Room ${roomId} 참여자 ${userIds.length}명에게 일정 추가: ${params.title}`);
+
+    // 각 참여자의 개인 캘린더에 추가
+    const results = await Promise.all(
+      userIds.map(async (userId) => {
+        try {
+          const event = await this.addUserEvent(userId, params);
+          return { userId, success: true, eventId: event.id || undefined };
+        } catch (error) {
+          this.logger.warn(`[개인캘린더] 일정 추가 실패 (${userId}): ${error.message}`);
+          return { userId, success: false, error: error.message };
+        }
+      }),
+    );
+
+    const successCount = results.filter(r => r.success).length;
+    const failCount = results.filter(r => !r.success).length;
+    this.logger.log(`[캘린더] Room ${roomId} 일정 추가 완료: ${successCount}명 성공, ${failCount}명 실패`);
+
+    return results;
   }
 
   /**
