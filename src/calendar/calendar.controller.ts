@@ -3,6 +3,7 @@ import {
   Post,
   Get,
   Delete,
+  Patch,
   Body,
   Param,
   Query,
@@ -23,6 +24,9 @@ interface AddEventDto {
   time?: string; // HH:mm
   description?: string;
   durationMinutes?: number;
+  recurrence?: 'daily' | 'weekly' | 'monthly'; // 반복 유형
+  repeatCount?: number; // 반복 횟수
+  repeatUntil?: string; // 반복 종료일 (YYYY-MM-DD)
 }
 
 interface AuthenticatedRequest extends Request {
@@ -211,6 +215,35 @@ export class CalendarController {
     return {
       status: 'ok',
       message: `${successCount}명의 캘린더에 일정이 추가되었습니다.${failCount > 0 ? ` (${failCount}명 실패)` : ''}`,
+      results,
+    };
+  }
+
+  /**
+   * Room 참여자들의 개인 캘린더 일정 수정
+   * PATCH /calendar/room/:roomId/events
+   */
+  @Patch('room/:roomId/events')
+  @UseGuards(JwtAuthGuard)
+  async updateEventForRoom(
+    @Param('roomId') roomId: string,
+    @Body() dto: {
+      originalTitle: string; // 기존 일정 제목 (검색용)
+      title?: string;
+      date?: string;
+      time?: string;
+      description?: string;
+      durationMinutes?: number;
+    },
+  ) {
+    const results = await this.calendarService.updateEventForRoomParticipants(roomId, dto);
+
+    const successCount = results.filter(r => r.success).length;
+    const failCount = results.filter(r => !r.success).length;
+
+    return {
+      status: 'ok',
+      message: `${successCount}명의 캘린더 일정이 수정되었습니다.${failCount > 0 ? ` (${failCount}명 실패)` : ''}`,
       results,
     };
   }

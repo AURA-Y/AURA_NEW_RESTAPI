@@ -231,6 +231,47 @@ export class CalendarService implements OnModuleInit {
   }
 
   /**
+   * 반복 규칙 생성 (RFC 5545 RRULE 형식)
+   * @param recurrence 반복 유형: 'daily' | 'weekly' | 'monthly'
+   * @param repeatCount 반복 횟수 (선택, 없으면 무한 반복)
+   * @param repeatUntil 반복 종료일 (선택, YYYY-MM-DD 형식)
+   */
+  private buildRecurrenceRule(
+    recurrence: 'daily' | 'weekly' | 'monthly',
+    repeatCount?: number,
+    repeatUntil?: string,
+  ): string[] {
+    let rule = 'RRULE:FREQ=';
+
+    switch (recurrence) {
+      case 'daily':
+        rule += 'DAILY';
+        break;
+      case 'weekly':
+        rule += 'WEEKLY';
+        break;
+      case 'monthly':
+        rule += 'MONTHLY';
+        break;
+    }
+
+    // 반복 횟수 지정
+    if (repeatCount && repeatCount > 0) {
+      rule += `;COUNT=${repeatCount}`;
+    }
+    // 반복 종료일 지정 (COUNT보다 우선)
+    else if (repeatUntil) {
+      // UNTIL 형식: YYYYMMDDTHHMMSSZ (UTC)
+      const untilDate = new Date(repeatUntil);
+      untilDate.setHours(23, 59, 59);
+      const untilStr = untilDate.toISOString().replace(/[-:]/g, '').split('.')[0] + 'Z';
+      rule += `;UNTIL=${untilStr}`;
+    }
+
+    return [rule];
+  }
+
+  /**
    * 사용자의 개인 캘린더에 일정 추가 (OAuth)
    */
   async addUserEvent(
@@ -242,12 +283,15 @@ export class CalendarService implements OnModuleInit {
       description?: string;
       durationMinutes?: number;
       attendees?: string[]; // 참석자 이메일 목록
+      recurrence?: 'daily' | 'weekly' | 'monthly'; // 반복 유형
+      repeatCount?: number; // 반복 횟수
+      repeatUntil?: string; // 반복 종료일 (YYYY-MM-DD)
     },
   ): Promise<calendar_v3.Schema$Event> {
     const oauth2Client = await this.getUserOAuth2Client(userId);
     const calendar = google.calendar({ version: 'v3', auth: oauth2Client });
 
-    const { title, date, time, description, durationMinutes = 60, attendees } = params;
+    const { title, date, time, description, durationMinutes = 60, attendees, recurrence, repeatCount, repeatUntil } = params;
 
     let start: calendar_v3.Schema$EventDateTime;
     let end: calendar_v3.Schema$EventDateTime;
@@ -284,13 +328,85 @@ export class CalendarService implements OnModuleInit {
       eventBody.attendees = attendees.map(email => ({ email }));
     }
 
+    // 반복 규칙 추가
+    if (recurrence) {
+      eventBody.recurrence = this.buildRecurrenceRule(recurrence, repeatCount, repeatUntil);
+      this.logger.log(`[개인캘린더] 반복 일정 규칙: ${eventBody.recurrence[0]}`);
+    }
+
     const response = await calendar.events.insert({
       calendarId: 'primary',
       requestBody: eventBody,
       sendUpdates: 'all', // 참석자에게 알림 전송
     });
 
-    this.logger.log(`[개인캘린더] 일정 생성: ${title} on ${date} for user ${userId}`);
+    this.logger.log(`[개인캘린더] 일정 생성: ${title} on ${date} for user ${userId}${recurrence ? ` (반복: ${recurrence})` : ''}`);
+    return response.data;
+  }
+
+  /**
+   * 사용자의 개인 캘린더 일정 수정 (OAuth)
+   */
+  async updateUserEvent(
+    userId: string,
+    eventId: string,
+    params: {
+      title?: string;
+      date?: string; // YYYY-MM-DD
+      time?: string; // HH:mm
+      description?: string;
+      durationMinutes?: number;
+    },
+  ): Promise<calendar_v3.Schema$Event> {
+    const oauth2Client = await this.getUserOAuth2Client(userId);
+    const calendar = google.calendar({ version: 'v3', auth: oauth2Client });
+
+    const { title, date, time, description, durationMinutes = 60 } = params;
+
+    const updateBody: calendar_v3.Schema$Event = {};
+
+    if (title) {
+      updateBody.summary = title;
+    }
+
+    if (description !== undefined) {
+      updateBody.description = description;
+    }
+
+    if (date) {
+      let start: calendar_v3.Schema$EventDateTime;
+      let end: calendar_v3.Schema$EventDateTime;
+
+      if (time) {
+        const startDateTime = `${date}T${time}:00`;
+        const endDate = new Date(`${date}T${time}:00`);
+        endDate.setMinutes(endDate.getMinutes() + durationMinutes);
+
+        const endDateStr = `${endDate.getFullYear()}-${String(endDate.getMonth() + 1).padStart(2, '0')}-${String(endDate.getDate()).padStart(2, '0')}T${String(endDate.getHours()).padStart(2, '0')}:${String(endDate.getMinutes()).padStart(2, '0')}:00`;
+
+        start = { dateTime: startDateTime, timeZone: 'Asia/Seoul' };
+        end = { dateTime: endDateStr, timeZone: 'Asia/Seoul' };
+      } else {
+        const endDateObj = new Date(date);
+        endDateObj.setDate(endDateObj.getDate() + 1);
+        const endDateStr = endDateObj.toISOString().split('T')[0];
+
+        start = { date };
+        end = { date: endDateStr };
+      }
+
+      updateBody.start = start;
+      updateBody.end = end;
+    }
+
+    const response = await calendar.events.patch({
+      calendarId: 'primary',
+      eventId,
+      requestBody: updateBody,
+      sendUpdates: 'all',
+    });
+
+    this.logger.log(`[개인캘린더] 일정 수정: ${eventId} for user ${userId}`);
     return response.data;
   }
 
@@ -346,6 +462,9 @@ export class CalendarService implements OnModuleInit {
       time?: string;
       description?: string;
       durationMinutes?: number;
+      recurrence?: 'daily' | 'weekly' | 'monthly'; // 반복 유형
+      repeatCount?: number; // 반복 횟수
+      repeatUntil?: string; // 반복 종료일 (YYYY-MM-DD)
     },
   ): Promise<{ userId: string; success: boolean; eventId?: string; error?: string }[]> {
     // Room 조회
@@ -383,6 +502,76 @@ export class CalendarService implements OnModuleInit {
     const successCount = results.filter(r => r.success).length;
     const failCount = results.filter(r => !r.success).length;
     this.logger.log(`[캘린더] Room ${roomId} 일정 추가 완료: ${successCount}명 성공, ${failCount}명 실패`);
+
+    return results;
+  }
+
+  /**
+   * Room 참여자들의 일정 수정
+   * 각 참여자의 캘린더에서 제목으로 일정을 찾아 수정
+   */
+  async updateEventForRoomParticipants(
+    roomId: string,
+    params: {
+      originalTitle: string; // 기존 일정 제목 (검색용)
+      title?: string;
+      date?: string;
+      time?: string;
+      description?: string;
+      durationMinutes?: number;
+    },
+  ): Promise<{ userId: string; success: boolean; eventId?: string; error?: string }[]> {
+    const room = await this.roomRepository.findOne({
+      where: { roomId },
+      select: ['roomId', 'roomTopic', 'participantUserIds', 'masterId'],
+    });
+
+    if (!room) {
+      this.logger.warn(`[캘린더] Room을 찾을 수 없음: ${roomId}`);
+      return [{ userId: roomId, success: false, error: 'Room을 찾을 수 없습니다' }];
+    }
+
+    const userIds = room.participantUserIds.length > 0
+      ? room.participantUserIds
+      : [room.masterId];
+
+    this.logger.log(`[캘린더] Room ${roomId} 참여자 ${userIds.length}명의 일정 수정: ${params.originalTitle}`);
+
+    const results = await Promise.all(
+      userIds.map(async (userId) => {
+        try {
+          // 사용자의 캘린더에서 제목으로 일정 검색
+          const events = await this.getUserEvents(userId, {
+            maxResults: 100,
+            timeMin: new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString(), // 30일 전부터
+            timeMax: new Date(Date.now() + 365 * 24 * 60 * 60 * 1000).toISOString(), // 1년 후까지
+          });
+
+          const targetEvent = events.find(e => e.summary === params.originalTitle);
+
+          if (!targetEvent || !targetEvent.id) {
+            return { userId, success: false, error: '일정을 찾을 수 없습니다' };
+          }
+
+          const updatedEvent = await this.updateUserEvent(userId, targetEvent.id, {
+            title: params.title,
+            date: params.date,
+            time: params.time,
+            description: params.description,
+            durationMinutes: params.durationMinutes,
+          });
+
+          return { userId, success: true, eventId: updatedEvent.id || undefined };
+        } catch (error) {
+          this.logger.warn(`[개인캘린더] 일정 수정 실패 (${userId}): ${error.message}`);
+          return { userId, success: false, error: error.message };
+        }
+      }),
+    );
+
+    const successCount = results.filter(r => r.success).length;
+    const failCount = results.filter(r => !r.success).length;
+    this.logger.log(`[캘린더] Room ${roomId} 일정 수정 완료: ${successCount}명 성공, ${failCount}명 실패`);
 
     return results;
   }
