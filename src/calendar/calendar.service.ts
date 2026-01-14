@@ -1,6 +1,6 @@
 import { Injectable, OnModuleInit, Logger } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository } from 'typeorm';
+import { Repository, ILike } from 'typeorm';
 import { ConfigService } from '@nestjs/config';
 import { google, calendar_v3 } from 'googleapis';
 import { OAuth2Client } from 'google-auth-library';
@@ -218,6 +218,110 @@ export class CalendarService implements OnModuleInit {
   }
 
   /**
+   * 사용자의 개인 캘린더에 일정 추가 (OAuth)
+   */
+  async addUserEvent(
+    userId: string,
+    params: {
+      title: string;
+      date: string; // YYYY-MM-DD
+      time?: string; // HH:mm
+      description?: string;
+      durationMinutes?: number;
+      attendees?: string[]; // 참석자 이메일 목록
+    },
+  ): Promise<calendar_v3.Schema$Event> {
+    const oauth2Client = await this.getUserOAuth2Client(userId);
+    const calendar = google.calendar({ version: 'v3', auth: oauth2Client });
+
+    const { title, date, time, description, durationMinutes = 60, attendees } = params;
+
+    let start: calendar_v3.Schema$EventDateTime;
+    let end: calendar_v3.Schema$EventDateTime;
+
+    if (time) {
+      // 시간이 있는 일정
+      const startDateTime = `${date}T${time}:00`;
+      const endDate = new Date(`${date}T${time}:00`);
+      endDate.setMinutes(endDate.getMinutes() + durationMinutes);
+
+      const endDateStr = `${endDate.getFullYear()}-${String(endDate.getMonth() + 1).padStart(2, '0')}-${String(endDate.getDate()).padStart(2, '0')}T${String(endDate.getHours()).padStart(2, '0')}:${String(endDate.getMinutes()).padStart(2, '0')}:00`;
+
+      start = { dateTime: startDateTime, timeZone: 'Asia/Seoul' };
+      end = { dateTime: endDateStr, timeZone: 'Asia/Seoul' };
+    } else {
+      // 종일 일정
+      const endDateObj = new Date(date);
+      endDateObj.setDate(endDateObj.getDate() + 1);
+      const endDateStr = endDateObj.toISOString().split('T')[0];
+
+      start = { date };
+      end = { date: endDateStr };
+    }
+
+    const eventBody: calendar_v3.Schema$Event = {
+      summary: title,
+      description,
+      start,
+      end,
+    };
+
+    // 참석자 추가
+    if (attendees && attendees.length > 0) {
+      eventBody.attendees = attendees.map(email => ({ email }));
+    }
+
+    const response = await calendar.events.insert({
+      calendarId: 'primary',
+      requestBody: eventBody,
+      sendUpdates: 'all', // 참석자에게 알림 전송
+    });
+
+    this.logger.log(`[개인캘린더] 일정 생성: ${title} on ${date} for user ${userId}`);
+    return response.data;
+  }
+
+  /**
+   * 여러 사용자의 개인 캘린더에 동시에 일정 추가 + 공용 캘린더에도 추가
+   */
+  async addEventToMultipleUsers(
+    userIdentifiers: string[],
+    params: {
+      title: string;
+      date: string;
+      time?: string;
+      description?: string;
+      durationMinutes?: number;
+    },
+  ): Promise<{ userId: string; success: boolean; eventId?: string; error?: string }[]> {
+    // 1. 공용 캘린더 추가 (비동기로 시작)
+    const publicCalendarPromise = this.addEvent(params)
+      .then(() => this.logger.log(`[공용캘린더] 일정 추가 성공: ${params.title}`))
+      .catch((error) => this.logger.warn(`[공용캘린더] 일정 추가 실패: ${error.message}`));
+
+    // 2. 각 사용자의 개인 캘린더에 추가 (병렬 처리)
+    const userPromises = userIdentifiers.map(async (identifier) => {
+      try {
+        const userId = await this.resolveUserId(identifier);
+        if (!userId) {
+          return { userId: identifier, success: false, error: '사용자를 찾을 수 없습니다' };
+        }
+
+        const event = await this.addUserEvent(userId, params);
+        return { userId, success: true, eventId: event.id || undefined };
+      } catch (error) {
+        this.logger.warn(`[개인캘린더] 일정 추가 실패 (${identifier}): ${error.message}`);
+        return { userId: identifier, success: false, error: error.message };
+      }
+    });
+
+    // 공용 캘린더와 개인 캘린더 모두 완료 대기
+    const [, ...userResults] = await Promise.all([publicCalendarPromise, ...userPromises]);
+
+    return userResults as { userId: string; success: boolean; eventId?: string; error?: string }[];
+  }
+
+  /**
    * UUID 형식인지 확인
    */
   private isValidUUID(str: string): boolean {
@@ -227,6 +331,9 @@ export class CalendarService implements OnModuleInit {
 
   /**
    * 닉네임 또는 userId로 실제 userId 조회
+   * 1. UUID 형식이면 그대로 반환
+   * 2. 정확히 일치하는 닉네임 조회
+   * 3. 대소문자 무시 매칭
    */
   private async resolveUserId(identifier: string): Promise<string | null> {
     // 이미 UUID 형식이면 그대로 반환
@@ -234,18 +341,40 @@ export class CalendarService implements OnModuleInit {
       return identifier;
     }
 
-    // 닉네임으로 사용자 조회
-    const user = await this.userRepository.findOne({
+    // 1. 정확히 일치하는 닉네임으로 사용자 조회
+    let user = await this.userRepository.findOne({
       where: { nickName: identifier },
-      select: ['userId'],
+      select: ['userId', 'nickName'],
     });
 
     if (user) {
-      this.logger.log(`Resolved nickname "${identifier}" to userId: ${user.userId}`);
+      this.logger.log(`[캘린더] 닉네임 정확히 일치: "${identifier}" -> ${user.userId}`);
       return user.userId;
     }
 
-    this.logger.warn(`Could not resolve identifier "${identifier}" to userId`);
+    // 2. 대소문자 무시 매칭 (ILike)
+    user = await this.userRepository.findOne({
+      where: { nickName: ILike(identifier) },
+      select: ['userId', 'nickName'],
+    });
+
+    if (user) {
+      this.logger.log(`[캘린더] 닉네임 대소문자 무시 매칭: "${identifier}" -> "${user.nickName}" (${user.userId})`);
+      return user.userId;
+    }
+
+    // 3. 부분 일치 (마지막 시도)
+    user = await this.userRepository.findOne({
+      where: { nickName: ILike(`%${identifier}%`) },
+      select: ['userId', 'nickName'],
+    });
+
+    if (user) {
+      this.logger.log(`[캘린더] 닉네임 부분 일치: "${identifier}" -> "${user.nickName}" (${user.userId})`);
+      return user.userId;
+    }
+
+    this.logger.warn(`[캘린더] 사용자 찾기 실패: "${identifier}"`);
     return null;
   }
 

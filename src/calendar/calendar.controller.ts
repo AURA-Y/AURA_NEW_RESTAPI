@@ -229,6 +229,46 @@ export class CalendarController {
     };
   }
 
+  /**
+   * 사용자 개인 캘린더에 일정 추가 (내부 서비스용 - API 키 인증)
+   * POST /calendar/internal/add-event
+   */
+  @Post('internal/add-event')
+  async addUserEventInternal(
+    @Headers('x-internal-api-key') apiKey: string,
+    @Body()
+    body: {
+      userIds: string[];
+      title: string;
+      date: string;
+      time?: string;
+      description?: string;
+      durationMinutes?: number;
+    },
+  ) {
+    this.validateInternalApiKey(apiKey);
+
+    const results = await this.calendarService.addEventToMultipleUsers(
+      body.userIds,
+      {
+        title: body.title,
+        date: body.date,
+        time: body.time,
+        description: body.description,
+        durationMinutes: body.durationMinutes,
+      },
+    );
+
+    const successCount = results.filter(r => r.success).length;
+    const failCount = results.filter(r => !r.success).length;
+
+    return {
+      status: 'ok',
+      message: `${successCount}명의 캘린더에 일정이 추가되었습니다.${failCount > 0 ? ` (${failCount}명 실패)` : ''}`,
+      results,
+    };
+  }
+
   // ==================== 공용 캘린더 (Service Account) - 기존 유지 ====================
 
   /**
