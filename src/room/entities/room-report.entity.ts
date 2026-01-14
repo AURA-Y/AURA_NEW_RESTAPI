@@ -55,6 +55,19 @@ export class RoomReport {
   @Column("uuid", { array: true, default: [] })
   participantUserIds: string[];  // 빈 배열 = 전체 공개, 값이 있으면 해당 유저만 접근 가능
 
+  @Column({ type: "uuid", nullable: true })
+  masterId: string | null;  // Host 구분용 (Room 삭제 후에도 유지)
+
+  @Column({ type: "jsonb", nullable: true })
+  personalizedReports: Array<{
+    participantId: string;
+    name: string;
+    role?: string;
+    reportUrl: string;
+    downloadUrl: string;
+    createdAt: string;
+  }> | null;  // 개인별 회의록 목록
+
   @BeforeInsert()
   setDefaults() {
     if (!this.createdAt) {

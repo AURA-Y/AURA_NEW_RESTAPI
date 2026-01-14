@@ -21,15 +21,97 @@ import { RoomReport } from "../room/entities/room-report.entity";
 import { JwtAuthGuard } from "../auth/guards/jwt-auth.guard";
 import { FilesInterceptor } from "@nestjs/platform-express";
 import { CreateReportDto } from "./dto/create-report.dto";
+import { RagReportCallbackDto } from "./dto/rag-callback.dto";
 import { SseService } from "../sse/sse.service";
 import * as multer from "multer";
+import { Logger } from "@nestjs/common";
 
 @Controller("reports")
 export class ReportsController {
+  private readonly logger = new Logger(ReportsController.name);
+
   constructor(
     private readonly reportsService: ReportsService,
     private readonly sseService: SseService,
   ) {}
+
+  /**
+   * RAG 서버 콜백 엔드포인트
+   * 회의 종료 후 회의록 생성 완료 시 RAG 서버에서 호출
+   * - 종합 회의록 (report_content) 저장
+   * - 개인별 회의록 (personalized_reports) 처리
+   * - SSE 알림 전송
+   */
+  @Post("callback")
+  async handleRagCallback(@Body() body: RagReportCallbackDto) {
+    this.logger.log(`\n========== [RAG Callback 수신] ==========`);
+    this.logger.log(`Event: ${body.event}`);
+    this.logger.log(`Room ID: ${body.room_id}`);
+    this.logger.log(`Meeting Title: ${body.meeting_title}`);
+    this.logger.log(`Speakers: ${body.speakers?.join(", ") || "없음"}`);
+    this.logger.log(`Report Content 길이: ${body.report_content?.length || 0}자`);
+    this.logger.log(`Personalized Reports: ${body.personalized_reports?.length || 0}개`);
+
+    // report_complete 이벤트가 아니면 무시
+    if (body.event !== "report_complete") {
+      this.logger.warn(`Unknown event type: ${body.event}`);
+      return { success: false, message: `Unknown event: ${body.event}` };
+    }
+
+    const roomId = body.room_id;
+
+    try {
+      // 1. 종합 회의록 저장 (report_content가 있는 경우)
+      if (body.report_content) {
+        this.logger.log(`[종합 회의록] S3에 저장 중...`);
+        await this.reportsService.updateReportSummary(
+          roomId,
+          body.report_content,
+          roomId
+        );
+        this.logger.log(`[종합 회의록] S3 저장 완료`);
+      }
+
+      // 2. 개인별 회의록 저장 (personalized_reports가 있는 경우)
+      if (body.personalized_reports && body.personalized_reports.length > 0) {
+        this.logger.log(`[개인별 회의록] ${body.personalized_reports.length}개 처리 중...`);
+        await this.reportsService.savePersonalizedReports(
+          roomId,
+          body.personalized_reports
+        );
+        this.logger.log(`[개인별 회의록] 저장 완료`);
+      }
+
+      // 3. SSE 알림 전송
+      this.logger.log(`[SSE] 알림 전송 중...`);
+      const notifyResult = await this.sseService.handleReportComplete({
+        roomId,
+        meetingTitle: body.meeting_title || "회의",
+        reportUrl: body.report_url || "",
+        downloadUrl: body.download_url || "",
+        speakers: body.speakers || [],
+        completedAt: body.completed_at || new Date().toISOString(),
+      });
+
+      this.logger.log(`[SSE] 알림 완료 - 성공: ${notifyResult.notified.length}, 실패: ${notifyResult.failed.length}`);
+      this.logger.log(`========== [RAG Callback 완료] ==========\n`);
+
+      return {
+        success: true,
+        roomId,
+        reportSaved: !!body.report_content,
+        personalizedReports: body.personalized_reports?.length || 0,
+        notified: notifyResult.notified.length,
+      };
+    } catch (error) {
+      this.logger.error(`[RAG Callback 오류] ${error.message}`);
+      return {
+        success: false,
+        roomId,
+        message: error.message,
+      };
+    }
+  }
 
   // 파일 업로드 -> S3 저장 후 메타 반환
   @Post("upload-files")
@@ -256,6 +338,37 @@ export class ReportsController {
   async getPresignedUrl(@Body() body: { fileUrl: string }) {
     const presignedUrl = await this.reportsService.getPresignedDownloadUrl(body.fileUrl);
     return { presignedUrl };
+  }
+
+  /**
+   * 개인별 회의록 조회
+   * @param id 회의 ID (roomId)
+   * @param participantId 참여자 ID
+   */
+  @Get(":id/personalized/:participantId")
+  @UseGuards(JwtAuthGuard)
+  async getPersonalizedReport(
+    @Param("id") id: string,
+    @Param("participantId") participantId: string,
+    @Req() req: Request
+  ) {
+    const userId = (req as any).user?.id;
+    if (!userId) {
+      throw new NotFoundException("User not found");
+    }
+
+    // 접근 권한 확인
+    const hasAccess = await this.reportsService.checkReportAccess(id, userId);
+    if (!hasAccess) {
+      throw new NotFoundException("Report not found or no access");
+    }
+
+    const report = await this.reportsService.getPersonalizedReport(id, participantId);
+    if (!report) {
+      throw new NotFoundException("Personalized report not found");
+    }
+
+    return report;
   }
 
   // S3에서 리포트 상세 정보 조회 (접근 권한 확인)

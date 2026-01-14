@@ -78,18 +78,20 @@ model Room {
 }
 
 model RoomReport {
-  reportId           String                     @id @db.VarChar(255)
-  topic              String                     @db.VarChar(255)
-  description        String?
-  attendees          String[]                   @default([])
-  shareScope         RoomReport_sharescope_enum @default(CHANNEL)
-  specialAuth        String[]                   @default([]) @db.Uuid
-  roomId             String                     @unique(map: "UQ_0e72b6c8cd1c2b3bf4f7340b9ea") @db.VarChar(255)
-  channelId          String                     @db.Uuid
-  tags               String[]                   @default([])
-  participantUserIds String[]                   @default([]) @db.Uuid
-  createdAt          DateTime                   @default(now()) @db.Timestamptz(6)
-  channel            Channel                    @relation(fields: [channelId], references: [channelId], onDelete: Cascade, onUpdate: NoAction, map: "FK_be4070416b4b332fc4c36a1dae7")
+  reportId            String                     @id @db.VarChar(255)
+  topic               String                     @db.VarChar(255)
+  description         String?
+  attendees           String[]                   @default([])
+  shareScope          RoomReport_sharescope_enum @default(CHANNEL)
+  specialAuth         String[]                   @default([]) @db.Uuid
+  roomId              String                     @unique(map: "UQ_0e72b6c8cd1c2b3bf4f7340b9ea") @db.VarChar(255)
+  channelId           String                     @db.Uuid
+  tags                String[]                   @default([])
+  participantUserIds  String[]                   @default([]) @db.Uuid
+  masterId            String?                    @db.Uuid // Host 구분용 (Room 삭제 후에도 유지)
+  personalizedReports Json?                      // 개인별 회의록 목록 (JSONB)
+  createdAt           DateTime                   @default(now()) @db.Timestamptz(6)
+  channel             Channel                    @relation(fields: [channelId], references: [channelId], onDelete: Cascade, onUpdate: NoAction, map: "FK_be4070416b4b332fc4c36a1dae7")
 }
 
 model JoinRequest {
