@@ -61,16 +61,22 @@ export class RoomController {
   }
 
   /**
-   * 사용자가 접근 가능한 방 목록 조회
+   * 사용자가 접근 가능한 방 목록 조회 (페이지네이션 지원)
    * - 전체 공개 방 (participantUserIds가 빈 배열)
    * - 사용자 ID가 포함된 방
+   * @query page - 페이지 번호 (기본값: 1)
+   * @query limit - 페이지당 항목 수 (기본값: 6)
    */
   @Get("accessible/:channelId")
   async getAccessibleRooms(
     @Param("channelId") channelId: string,
     @Request() req,
+    @Query("page") page?: string,
+    @Query("limit") limit?: string,
   ) {
-    return this.roomService.getAccessibleRooms(req.user.id, channelId);
+    const pageNum = page ? parseInt(page, 10) : 1;
+    const limitNum = limit ? parseInt(limit, 10) : 6;
+    return this.roomService.getAccessibleRooms(req.user.id, channelId, pageNum, limitNum);
   }
 
   // 정적 경로들 먼저 (topic, channel, team)

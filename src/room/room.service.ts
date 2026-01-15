@@ -211,11 +211,23 @@ export class RoomService {
   }
 
   /**
-   * 사용자가 접근 가능한 방 목록 조회
+   * 사용자가 접근 가능한 방 목록 조회 (페이지네이션 지원)
    * - participantUserIds가 빈 배열이면 전체 공개 (채널 멤버면 접근 가능)
    * - participantUserIds가 있으면 해당 유저만 접근 가능
    */
-  async getAccessibleRooms(userId: string, channelId: string): Promise<Room[]> {
+  async getAccessibleRooms(
+    userId: string,
+    channelId: string,
+    page: number = 1,
+    limit: number = 6
+  ): Promise<{
+    rooms: Room[];
+    totalCount: number;
+    totalPages: number;
+    currentPage: number;
+    hasNext: boolean;
+    hasPrev: boolean;
+  }> {
     // 1. 사용자의 채널 멤버십 조회
     const membership = await this.channelMemberRepository.findOne({
       where: { userId, channelId }
@@ -240,9 +252,27 @@ export class RoomService {
         }
       );
 
-    return queryBuilder
+    // 전체 개수 조회
+    const totalCount = await queryBuilder.getCount();
+
+    // 페이지네이션 적용
+    const skip = (page - 1) * limit;
+    const rooms = await queryBuilder
       .orderBy('room.createdAt', 'DESC')
+      .skip(skip)
+      .take(limit)
       .getMany();
+
+    const totalPages = Math.ceil(totalCount / limit);
+
+    return {
+      rooms,
+      totalCount,
+      totalPages,
+      currentPage: page,
+      hasNext: page < totalPages,
+      hasPrev: page > 1,
+    };
   }
 
   /**
