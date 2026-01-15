@@ -41,6 +41,17 @@ export class RoomController {
       }).catch(err => console.error('[Room] SSE 알림 전송 실패:', err.message));
     }
 
+    // Slack 초대 알림 전송 (웹훅 설정된 채널만)
+    if (room.channelId) {
+      this.roomService.sendSlackMeetingInvite({
+        channelId: room.channelId,
+        roomId: room.roomId,
+        roomTopic: room.roomTopic,
+        roomDescription: room.roomDescription,
+        masterNickName: req.user.nickName,
+      }).catch(err => console.error('[Room] Slack 알림 전송 실패:', err.message));
+    }
+
     return room;
   }
 
