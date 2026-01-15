@@ -2,16 +2,20 @@ import {
   Injectable,
   NotFoundException,
   ForbiddenException,
+  Logger,
 } from "@nestjs/common";
 import { InjectRepository } from "@nestjs/typeorm";
 import { Repository, Brackets } from "typeorm";
 import { Room } from "./entities/room.entity";
 import { RoomReport } from "./entities/room-report.entity";
 import { ChannelMember } from "../channel/entities/channel-member.entity";
+import { Channel } from "../channel/entities/channel.entity";
 import { CreateRoomDto } from "./dto/create-room.dto";
 
 @Injectable()
 export class RoomService {
+  private readonly logger = new Logger(RoomService.name);
+
   constructor(
     @InjectRepository(Room)
     private roomRepository: Repository<Room>,
@@ -19,6 +23,8 @@ export class RoomService {
     private roomReportRepository: Repository<RoomReport>,
     @InjectRepository(ChannelMember)
     private channelMemberRepository: Repository<ChannelMember>,
+    @InjectRepository(Channel)
+    private channelRepository: Repository<Channel>,
   ) { }
 
   /**
@@ -334,5 +340,122 @@ export class RoomService {
     return queryBuilder
       .orderBy("room.createdAt", "DESC")
       .getMany();
+  }
+
+  /**
+   * 회의 생성 시 Slack으로 초대 알림 전송
+   */
+  async sendSlackMeetingInvite(params: {
+    channelId: string;
+    roomId: string;
+    roomTopic: string;
+    roomDescription?: string;
+    masterNickName: string;
+    scheduledAt?: Date;
+  }): Promise<{ success: boolean; message: string }> {
+    const { channelId, roomId, roomTopic, roomDescription, masterNickName, scheduledAt } = params;
+
+    // 채널 조회
+    const channel = await this.channelRepository.findOne({
+      where: { channelId },
+    });
+
+    if (!channel) {
+      this.logger.warn(`[Slack 초대] 채널을 찾을 수 없음: ${channelId}`);
+      return { success: false, message: 'Channel not found' };
+    }
+
+    // Slack 웹훅 URL 확인
+    if (!channel.slackWebhookUrl) {
+      this.logger.debug(`[Slack 초대] 웹훅 URL 미설정: ${channelId}`);
+      return { success: false, message: 'Slack webhook not configured' };
+    }
+
+    // 시간 포맷팅
+    const now = new Date();
+    const timeText = scheduledAt
+      ? new Date(scheduledAt).toLocaleString('ko-KR', { timeZone: 'Asia/Seoul' })
+      : now.toLocaleString('ko-KR', { timeZone: 'Asia/Seoul' });
+
+    // Slack 메시지 구성
+    const slackMessage = {
+      blocks: [
+        {
+          type: 'header',
+          text: {
+            type: 'plain_text',
+            text: '📢 새로운 회의가 생성되었습니다',
+            emoji: true,
+          },
+        },
+        {
+          type: 'section',
+          fields: [
+            {
+              type: 'mrkdwn',
+              text: `*📝 회의 주제:*\n${roomTopic}`,
+            },
+            {
+              type: 'mrkdwn',
+              text: `*👤 주최자:*\n${masterNickName}`,
+            },
+          ],
+        },
+        {
+          type: 'section',
+          fields: [
+            {
+              type: 'mrkdwn',
+              text: `*🕐 시작 시간:*\n${timeText}`,
+            },
+            {
+              type: 'mrkdwn',
+              text: `*🔗 참여 링크:*\n<https://aura.ai.kr/room/${roomId}|회의 참여하기>`,
+            },
+          ],
+        },
+        ...(roomDescription ? [{
+          type: 'section',
+          text: {
+            type: 'mrkdwn',
+            text: `*📋 회의 설명:*\n${roomDescription}`,
+          },
+        }] : []),
+        {
+          type: 'divider',
+        },
+        {
+          type: 'context',
+          elements: [
+            {
+              type: 'mrkdwn',
+              text: '_AURA 회의 시스템에서 발송됨_',
+            },
+          ],
+        },
+      ],
+    };
+
+    try {
+      const response = await fetch(channel.slackWebhookUrl, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(slackMessage),
+      });
+
+      if (!response.ok) {
+        const errorText = await response.text();
+        this.logger.error(`[Slack 초대] 웹훅 전송 실패: ${errorText}`);
+        return { success: false, message: 'Failed to send Slack message' };
+      }
+
+      this.logger.log(`[Slack 초대] 알림 전송 성공: ${roomTopic} (채널: ${channel.channelName})`);
+      return { success: true, message: 'Successfully sent Slack invite' };
+    } catch (error) {
+      this.logger.error(`[Slack 초대] 전송 오류: ${error.message}`);
+      return { success: false, message: 'Failed to connect to Slack' };
+    }
   }
 }
