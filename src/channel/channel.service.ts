@@ -625,6 +625,68 @@ export class ChannelService {
   }
 
   /**
+   * 채널 멤버 페이지네이션 조회
+   */
+  async getChannelMembersPaginated(
+    channelId: string,
+    userId: string,
+    page: number = 1,
+    limit: number = 6,
+    teamId?: string,
+    search?: string,
+  ) {
+    // 채널 접근 권한 확인
+    const membership = await this.channelMemberRepository.findOne({
+      where: { channelId, userId },
+    });
+
+    if (!membership) {
+      throw new ForbiddenException('You are not a member of this channel');
+    }
+
+    // 쿼리 빌더 생성
+    const queryBuilder = this.channelMemberRepository
+      .createQueryBuilder('member')
+      .leftJoinAndSelect('member.user', 'user')
+      .leftJoinAndSelect('member.team', 'team')
+      .where('member.channelId = :channelId', { channelId });
+
+    // 팀 필터링
+    if (teamId) {
+      queryBuilder.andWhere('member.teamId = :teamId', { teamId });
+    }
+
+    // 검색 필터링
+    if (search) {
+      queryBuilder.andWhere(
+        '(user.nickName ILIKE :search OR user.email ILIKE :search)',
+        { search: `%${search}%` },
+      );
+    }
+
+    // 전체 개수 조회
+    const total = await queryBuilder.getCount();
+
+    // 페이지네이션 적용
+    const members = await queryBuilder
+      .orderBy('member.joinedAt', 'ASC')
+      .skip((page - 1) * limit)
+      .take(limit)
+      .getMany();
+
+    return {
+      members,
+      pagination: {
+        page,
+        limit,
+        total,
+        totalPages: Math.ceil(total / limit),
+        hasMore: page * limit < total,
+      },
+    };
+  }
+
+  /**
    * 채널의 Slack 웹훅 설정 여부 확인
    */
   async hasSlackWebhook(channelId: string, userId: string): Promise<boolean> {

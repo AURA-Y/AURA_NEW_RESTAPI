@@ -1,4 +1,4 @@
-import { Controller, Get, Post, Put, Patch, Delete, Body, Param, UseGuards, Request } from '@nestjs/common';
+import { Controller, Get, Post, Put, Patch, Delete, Body, Param, Query, UseGuards, Request } from '@nestjs/common';
 import { ChannelService } from './channel.service';
 import { CreateChannelDto } from './dto/create-channel.dto';
 import { UpdateChannelDto } from './dto/update-channel.dto';
@@ -45,7 +45,56 @@ export class ChannelController {
   }
 
   /**
+   * GET /channels/:channelId/members/paginated - 채널 멤버 페이지네이션 조회
+   * 주의: :channelId 라우트보다 먼저 정의해야 함
+   */
+  @Get(':channelId/members/paginated')
+  async getChannelMembersPaginated(
+    @Param('channelId') channelId: string,
+    @Request() req,
+    @Query('page') page: string = '1',
+    @Query('limit') limit: string = '6',
+    @Query('teamId') teamId?: string,
+    @Query('search') search?: string,
+  ) {
+    return this.channelService.getChannelMembersPaginated(
+      channelId,
+      req.user.id,
+      parseInt(page, 10) || 1,
+      parseInt(limit, 10) || 6,
+      teamId,
+      search,
+    );
+  }
+
+  /**
+   * GET /channels/:channelId/join-requests - 채널의 가입 요청 목록 조회 (Owner만)
+   * 주의: :channelId 라우트보다 먼저 정의해야 함
+   */
+  @Get(':channelId/join-requests')
+  async getJoinRequests(
+    @Param('channelId') channelId: string,
+    @Request() req
+  ) {
+    return this.channelService.getJoinRequests(channelId, req.user.id);
+  }
+
+  /**
+   * GET /channels/:channelId/slack/status - Slack 웹훅 설정 여부 확인
+   * 주의: :channelId 라우트보다 먼저 정의해야 함
+   */
+  @Get(':channelId/slack/status')
+  async getSlackStatus(
+    @Param('channelId') channelId: string,
+    @Request() req
+  ) {
+    const hasWebhook = await this.channelService.hasSlackWebhook(channelId, req.user.id);
+    return { hasWebhook };
+  }
+
+  /**
    * GET /channels/:channelId - 특정 채널 상세 조회
+   * 주의: 이 라우트는 모든 :channelId/xxx 라우트보다 뒤에 정의해야 함
    */
   @Get(':channelId')
   async getChannelById(@Param('channelId') channelId: string, @Request() req) {
@@ -126,17 +175,6 @@ export class ChannelController {
   }
 
   /**
-   * GET /channels/:channelId/join-requests - 채널의 가입 요청 목록 조회 (Owner만)
-   */
-  @Get(':channelId/join-requests')
-  async getJoinRequests(
-    @Param('channelId') channelId: string,
-    @Request() req
-  ) {
-    return this.channelService.getJoinRequests(channelId, req.user.id);
-  }
-
-  /**
    * PATCH /channels/join-requests/:requestId/approve - 가입 요청 승인
    */
   @Patch('join-requests/:requestId/approve')
@@ -170,17 +208,5 @@ export class ChannelController {
     @Request() req
   ) {
     return this.channelService.shareToSlack(channelId, shareDto, req.user.id);
-  }
-
-  /**
-   * GET /channels/:channelId/slack/status - Slack 웹훅 설정 여부 확인
-   */
-  @Get(':channelId/slack/status')
-  async getSlackStatus(
-    @Param('channelId') channelId: string,
-    @Request() req
-  ) {
-    const hasWebhook = await this.channelService.hasSlackWebhook(channelId, req.user.id);
-    return { hasWebhook };
   }
 }
