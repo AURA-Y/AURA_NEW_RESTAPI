@@ -144,6 +144,36 @@ export class RoomService {
     await this.roomRepository.delete({ roomId });
   }
 
+  /**
+   * 강제 방 삭제 (방장 체크 없음, 삭제된 LiveKit 방 정리용)
+   * - Room, RoomReport, S3 폴더 모두 삭제
+   */
+  async forceDeleteRoom(roomId: string): Promise<{ deleted: boolean; details: string[] }> {
+    const details: string[] = [];
+
+    // 1. Room 삭제
+    const room = await this.roomRepository.findOne({ where: { roomId } });
+    if (room) {
+      await this.roomRepository.delete({ roomId });
+      details.push("Room deleted from DB");
+      this.logger.log(`[강제 삭제] Room 삭제: ${roomId}`);
+    } else {
+      details.push("Room not found in DB");
+    }
+
+    // 2. RoomReport 삭제
+    const report = await this.roomReportRepository.findOne({ where: { reportId: roomId } });
+    if (report) {
+      await this.roomReportRepository.delete({ reportId: roomId });
+      details.push("Report deleted from DB");
+      this.logger.log(`[강제 삭제] Report 삭제: ${roomId}`);
+    } else {
+      details.push("Report not found in DB");
+    }
+
+    return { deleted: true, details };
+  }
+
   async addAttendee(roomId: string, nickName: string): Promise<Room> {
     const room = await this.getRoomById(roomId);
 

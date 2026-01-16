@@ -13,6 +13,7 @@ import { RoomService } from "./room.service";
 import { CreateRoomDto } from "./dto/create-room.dto";
 import { JwtAuthGuard } from "../auth/guards/jwt-auth.guard";
 import { SseService } from "../sse/sse.service";
+import { ReportsService } from "../reports/reports.service";
 
 @Controller("rooms")
 @UseGuards(JwtAuthGuard)
@@ -20,6 +21,7 @@ export class RoomController {
   constructor(
     private readonly roomService: RoomService,
     private readonly sseService: SseService,
+    private readonly reportsService: ReportsService,
   ) { }
 
   @Post()
@@ -133,6 +135,26 @@ export class RoomController {
   async deleteRoom(@Param("roomId") roomId: string, @Request() req) {
     await this.roomService.deleteRoom(roomId, req.user.id);
     return { message: "Room deleted successfully" };
+  }
+
+  /**
+   * 강제 방 삭제 (방장 체크 없음, 삭제된 LiveKit 방 정리용)
+   * Room, RoomReport, S3 폴더 모두 삭제
+   */
+  @Delete(":roomId/force")
+  async forceDeleteRoom(@Param("roomId") roomId: string) {
+    // 1. Room 및 Report DB 삭제
+    const result = await this.roomService.forceDeleteRoom(roomId);
+
+    // 2. S3 폴더 삭제
+    try {
+      await this.reportsService.deleteS3Folder(roomId);
+      result.details.push("S3 folder deleted");
+    } catch (error) {
+      result.details.push(`S3 folder deletion failed: ${error.message}`);
+    }
+
+    return result;
   }
 
   @Post(":roomId/join")

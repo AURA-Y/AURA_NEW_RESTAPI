@@ -6,11 +6,13 @@ import { Room, RoomReport } from './entities';
 import { ChannelMember } from '../channel/entities/channel-member.entity';
 import { Channel } from '../channel/entities/channel.entity';
 import { SseModule } from '../sse/sse.module';
+import { ReportsModule } from '../reports/reports.module';
 
 @Module({
   imports: [
     TypeOrmModule.forFeature([Room, RoomReport, ChannelMember, Channel]),
     forwardRef(() => SseModule),
+    forwardRef(() => ReportsModule),
   ],
   controllers: [RoomController],
   providers: [RoomService],
