@@ -893,6 +893,14 @@ export class ReportsService {
           parsed.shareScope = "CHANNEL";
         }
 
+        // personalizedReports 필드명 변환 (RAG에서 'url'로 보내지만 프론트엔드는 'reportUrl' 기대)
+        if (parsed.personalizedReports && Array.isArray(parsed.personalizedReports)) {
+          parsed.personalizedReports = parsed.personalizedReports.map((pr: any) => ({
+            ...pr,
+            reportUrl: pr.reportUrl || pr.url,  // url → reportUrl 변환
+          }));
+        }
+
         // DB에서 tags 가져와서 병합 (S3에 없는 경우 대비)
         if (!parsed.tags || parsed.tags.length === 0) {
           try {
