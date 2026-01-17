@@ -740,7 +740,28 @@ export class CalendarService implements OnModuleInit {
       currentDate.setDate(currentDate.getDate() + 1);
     }
 
-    return freeSlots;
+    if (durationMs <= 0) {
+      return freeSlots;
+    }
+
+    const segmentedSlots: { start: string; end: string }[] = [];
+
+    for (const slot of freeSlots) {
+      const slotStart = new Date(slot.start);
+      const slotEnd = new Date(slot.end);
+      let cursor = new Date(slotStart.getTime());
+
+      while (cursor.getTime() + durationMs <= slotEnd.getTime()) {
+        const segmentEnd = new Date(cursor.getTime() + durationMs);
+        segmentedSlots.push({
+          start: cursor.toISOString(),
+          end: segmentEnd.toISOString(),
+        });
+        cursor = segmentEnd;
+      }
+    }
+
+    return segmentedSlots;
   }
 
   // ==================== 캘린더 공유 관련 메서드 ====================
