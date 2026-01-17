@@ -51,6 +51,7 @@ export class RoomService {
       token: data.token || null,
       tags: data.tags || [],
       uploadFileList: data.uploadFileList || [],
+      referencedFiles: data.referencedFiles || [],
     });
     return this.roomRepository.save(room);
   }

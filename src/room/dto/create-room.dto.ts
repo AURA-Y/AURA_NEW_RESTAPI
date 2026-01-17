@@ -67,4 +67,15 @@ export class CreateRoomDto {
     fileSize: number;
     createdAt: string;
   }>;
+
+  @IsArray()
+  @IsOptional()
+  referencedFiles?: Array<{
+    fileId: string;
+    fileName: string;
+    fileUrl: string;
+    fileSize: number;
+    createdAt: string;
+    sourceRoomId?: string;
+  }>;
 }
