@@ -59,8 +59,19 @@ export class GitHubController {
    * PUT /github/channels/:channelId
    * Channel GitHub 설정 저장
    *
-   * Request Body:
+   * Request Body (기본 App 사용):
    * {
+   *   "installationId": "12345678",
+   *   "repoOwner": "acme-org",
+   *   "repoName": "meetings",
+   *   "labels": ["meeting-summary"],
+   *   "autoCreate": true
+   * }
+   *
+   * Request Body (Channel별 독립 App 사용):
+   * {
+   *   "appId": "9876543",
+   *   "privateKey": "-----BEGIN RSA PRIVATE KEY-----\n...\n-----END RSA PRIVATE KEY-----",
    *   "installationId": "12345678",
    *   "repoOwner": "acme-org",
    *   "repoName": "meetings",
@@ -76,6 +87,8 @@ export class GitHubController {
   ): Promise<{ success: boolean; message: string }> {
     await this.githubService.saveChannelSettings(
       channelId,
+      dto.appId,
+      dto.privateKey,
       dto.installationId,
       dto.repoOwner,
       dto.repoName,
@@ -83,9 +96,10 @@ export class GitHubController {
       dto.autoCreate ?? false,
     );
 
+    const appInfo = dto.appId ? ` (App ID: ${dto.appId})` : '';
     return {
       success: true,
-      message: `GitHub settings saved for channel ${channelId}`,
+      message: `GitHub settings saved for channel ${channelId}${appInfo}`,
     };
   }
 
@@ -246,8 +260,17 @@ export class GitHubController {
    * POST /github/test-connection
    * GitHub 연결 테스트
    *
-   * Request Body:
+   * Request Body (기본 App 사용):
    * {
+   *   "installationId": "12345678",
+   *   "repoOwner": "acme-org",
+   *   "repoName": "meetings"
+   * }
+   *
+   * Request Body (Channel별 독립 App 사용):
+   * {
+   *   "appId": "9876543",
+   *   "privateKey": "-----BEGIN RSA PRIVATE KEY-----\n...\n-----END RSA PRIVATE KEY-----",
    *   "installationId": "12345678",
    *   "repoOwner": "acme-org",
    *   "repoName": "meetings"
@@ -258,6 +281,8 @@ export class GitHubController {
   async testConnection(
     @Body()
     body: {
+      appId?: string;
+      privateKey?: string;
       installationId: string;
       repoOwner: string;
       repoName: string;
@@ -271,7 +296,7 @@ export class GitHubController {
       permissions: string[];
     };
   }> {
-    const { installationId, repoOwner, repoName } = body;
+    const { appId, privateKey, installationId, repoOwner, repoName } = body;
 
     // 유효성 검사
     if (!installationId || !repoOwner || !repoName) {
@@ -286,6 +311,8 @@ export class GitHubController {
     }
 
     return this.githubService.testConnection(
+      appId,
+      privateKey,
       installationIdNum,
       repoOwner,
       repoName,

@@ -41,10 +41,9 @@ export class GitHubService {
    * 2. 없으면 → Channel 기본 설정 사용
    * 3. Channel 설정도 없으면 → null 반환
    *
-   * 예시:
-   * Channel: { repoOwner: "acme", repoName: "meetings", labels: ["meeting"] }
-   * Room A: { repoOverride: null } → acme/meetings
-   * Room B: { repoOverride: "acme/backend" } → acme/backend
+   * Channel별 독립 GitHub App 지원:
+   * - Channel에 appId + privateKey가 있으면 → Channel 자체 App 사용
+   * - 없으면 → 서버 기본 App 사용 (하위 호환)
    */
   async resolveConfig(roomId: string): Promise<GitHubConfig | null> {
     // Room과 Channel 함께 조회
@@ -83,6 +82,27 @@ export class GitHubService {
       return null;
     }
 
+    // Channel 자체 App 정보 복호화 (있는 경우)
+    let appId: string | undefined;
+    let privateKey: string | undefined;
+
+    if (channel.githubAppId && channel.githubPrivateKey) {
+      try {
+        appId = channel.githubAppId;
+        privateKey = this.encryptionService.decrypt(channel.githubPrivateKey);
+        this.logger.debug(
+          `Using Channel's own GitHub App (App ID: ${appId})`,
+        );
+      } catch (error) {
+        this.logger.error(
+          `Failed to decrypt Private Key for Channel ${channel.channelId}: ${error.message}`,
+        );
+        // Private Key 복호화 실패 시 기본 App 사용
+        appId = undefined;
+        privateKey = undefined;
+      }
+    }
+
     // Room 오버라이드 확인
     let owner: string;
     let repo: string;
@@ -119,7 +139,7 @@ export class GitHubService {
       );
     }
 
-    return { installationId, owner, repo, labels };
+    return { appId, privateKey, installationId, owner, repo, labels };
   }
 
   /**
@@ -132,7 +152,7 @@ export class GitHubService {
    * @returns Issue 번호와 URL
    *
    * Flow:
-   * 1. GitHubAppService로 인증된 Octokit 획득
+   * 1. GitHubAppService로 인증된 Octokit 획득 (Channel 자체 App 또는 기본 App)
    * 2. GitHub API 호출: POST /repos/{owner}/{repo}/issues
    * 3. 응답에서 Issue 번호와 URL 추출
    */
@@ -144,12 +164,15 @@ export class GitHubService {
   ): Promise<GitHubIssueResult> {
     const octokit = await this.githubAppService.getInstallationOctokit(
       config.installationId,
+      config.appId,
+      config.privateKey,
     );
 
     const issueLabels = labels ?? config.labels;
 
+    const appInfo = config.appId ? ` (App ID: ${config.appId})` : '';
     this.logger.log(
-      `Creating issue in ${config.owner}/${config.repo}: "${title}"`,
+      `Creating issue in ${config.owner}/${config.repo}: "${title}"${appInfo}`,
     );
 
     const response = await octokit.rest.issues.create({
@@ -174,6 +197,8 @@ export class GitHubService {
   /**
    * GitHub 연결 테스트
    *
+   * @param appId - GitHub App ID (선택, Channel별 App 사용 시)
+   * @param privateKey - GitHub App Private Key (선택, Channel별 App 사용 시)
    * @param installationId - Installation ID (평문)
    * @param owner - Repository Owner
    * @param repo - Repository 이름
@@ -185,13 +210,18 @@ export class GitHubService {
    * 3. Issues 권한이 있는지
    */
   async testConnection(
+    appId: string | undefined,
+    privateKey: string | undefined,
     installationId: number,
     owner: string,
     repo: string,
   ): Promise<GitHubConnectionTestResult> {
     try {
-      const octokit =
-        await this.githubAppService.getInstallationOctokit(installationId);
+      const octokit = await this.githubAppService.getInstallationOctokit(
+        installationId,
+        appId,
+        privateKey,
+      );
 
       // Repository 정보 조회
       const { data: repoData } = await octokit.rest.repos.get({ owner, repo });
@@ -201,9 +231,10 @@ export class GitHubService {
       if (repoData.permissions?.push) permissions.push('write');
       if (repoData.permissions?.pull) permissions.push('read');
 
+      const appInfo = appId ? ` (App ID: ${appId})` : ' (using default App)';
       return {
         success: true,
-        message: `Successfully connected to ${owner}/${repo}`,
+        message: `Successfully connected to ${owner}/${repo}${appInfo}`,
         details: {
           repositoryName: repoData.full_name,
           repositoryUrl: repoData.html_url,
@@ -233,6 +264,8 @@ export class GitHubService {
    * Channel GitHub 설정 저장
    *
    * @param channelId - Channel ID
+   * @param appId - GitHub App ID (선택, Channel별 독립 App 사용 시)
+   * @param privateKey - GitHub App Private Key (선택, PEM 형식, 암호화해서 저장)
    * @param installationId - Installation ID (평문, 암호화해서 저장)
    * @param repoOwner - Repository Owner
    * @param repoName - Repository 이름
@@ -241,6 +274,8 @@ export class GitHubService {
    */
   async saveChannelSettings(
     channelId: string,
+    appId: string | undefined,
+    privateKey: string | undefined,
     installationId: string,
     repoOwner: string,
     repoName: string,
@@ -251,9 +286,16 @@ export class GitHubService {
     const encryptedInstallationId =
       this.encryptionService.encrypt(installationId);
 
+    // Private Key 암호화 (있는 경우)
+    const encryptedPrivateKey = privateKey
+      ? this.encryptionService.encrypt(privateKey)
+      : null;
+
     await this.prisma.channel.update({
       where: { channelId },
       data: {
+        githubAppId: appId ?? null,
+        githubPrivateKey: encryptedPrivateKey,
         githubInstallationId: encryptedInstallationId,
         githubRepoOwner: repoOwner,
         githubRepoName: repoName,
@@ -262,8 +304,9 @@ export class GitHubService {
       },
     });
 
+    const appInfo = appId ? ` (App ID: ${appId})` : ' (using default App)';
     this.logger.log(
-      `Saved GitHub settings for Channel ${channelId}: ${repoOwner}/${repoName}`,
+      `Saved GitHub settings for Channel ${channelId}: ${repoOwner}/${repoName}${appInfo}`,
     );
   }
 
@@ -271,10 +314,12 @@ export class GitHubService {
    * Channel GitHub 설정 조회
    *
    * @param channelId - Channel ID
-   * @returns 설정 정보 (Installation ID는 노출하지 않음)
+   * @returns 설정 정보 (Installation ID, Private Key는 노출하지 않음)
    */
   async getChannelSettings(channelId: string): Promise<{
     isConnected: boolean;
+    hasOwnApp?: boolean;
+    appId?: string;
     repoOwner?: string;
     repoName?: string;
     labels?: string[];
@@ -283,6 +328,8 @@ export class GitHubService {
     const channel = await this.prisma.channel.findUnique({
       where: { channelId },
       select: {
+        githubAppId: true,
+        githubPrivateKey: true,
         githubInstallationId: true,
         githubRepoOwner: true,
         githubRepoName: true,
@@ -295,8 +342,13 @@ export class GitHubService {
       return { isConnected: false };
     }
 
+    // Channel 자체 App 사용 여부 확인
+    const hasOwnApp = !!(channel.githubAppId && channel.githubPrivateKey);
+
     return {
       isConnected: true,
+      hasOwnApp,
+      appId: channel.githubAppId ?? undefined,
       repoOwner: channel.githubRepoOwner ?? undefined,
       repoName: channel.githubRepoName ?? undefined,
       labels: channel.githubIssueLabels,
@@ -313,6 +365,8 @@ export class GitHubService {
     await this.prisma.channel.update({
       where: { channelId },
       data: {
+        githubAppId: null,
+        githubPrivateKey: null,
         githubInstallationId: null,
         githubRepoOwner: null,
         githubRepoName: null,

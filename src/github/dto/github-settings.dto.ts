@@ -11,9 +11,22 @@ import {
 /**
  * Channel GitHub 설정 저장 DTO
  *
- * PUT /restapi/channels/:channelId/github
+ * PUT /restapi/github/channels/:channelId
+ *
+ * Channel별 독립 GitHub App 지원:
+ * - appId + privateKey: Channel 자체 GitHub App 사용
+ * - appId/privateKey 없으면: 서버 기본 App 사용 (하위 호환)
  */
 export class UpdateChannelGitHubSettingsDto {
+  @IsString()
+  @MaxLength(20)
+  @IsOptional()
+  appId?: string; // GitHub App ID (Channel별 독립 App 사용 시)
+
+  @IsString()
+  @IsOptional()
+  privateKey?: string; // GitHub App Private Key (PEM 형식, 암호화하여 저장)
+
   @IsString()
   @MaxLength(20)
   installationId: string; // 숫자지만 문자열로 받음 (프론트에서 편의)
@@ -70,6 +83,8 @@ export class UpdateRoomGitHubOverrideDto {
  */
 export class ChannelGitHubSettingsResponseDto {
   isConnected: boolean;
+  hasOwnApp?: boolean; // Channel 자체 GitHub App 사용 여부
+  appId?: string; // GitHub App ID (보안상 privateKey는 반환하지 않음)
   repoOwner?: string;
   repoName?: string;
   labels?: string[];

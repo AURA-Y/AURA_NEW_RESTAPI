@@ -23,7 +23,8 @@
     "@nestjs/platform-express": "^10.0.0",
     "@nestjs/typeorm": "^10.0.0",
     "@octokit/auth-app": "^8.1.2",
-    "@prisma/client": "^6.0.0",
+    "@prisma/adapter-pg": "^7.2.0",
+    "@prisma/client": "^7.2.0",
     "bcrypt": "^5.1.0",
     "class-transformer": "^0.5.1",
     "class-validator": "^0.14.0",
@@ -34,6 +35,7 @@
     "passport-jwt": "^4.0.1",
     "passport-local": "^1.0.0",
     "pg": "^8.11.0",
+    "prisma": "^7.2.0",
     "reflect-metadata": "^0.1.13",
     "rxjs": "^7.8.1",
     "typeorm": "^0.3.17"
@@ -45,7 +47,6 @@
     "@types/node": "^20.0.0",
     "@types/passport-jwt": "^3.0.9",
     "@types/passport-local": "^1.0.35",
-    "prisma": "^6.0.0",
     "typescript": "^5.0.0"
   }
 }

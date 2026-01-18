@@ -2,8 +2,18 @@
  * GitHub Issue 생성에 필요한 설정 인터페이스
  *
  * resolveConfig() 메서드의 반환 타입
+ *
+ * Channel별 독립 GitHub App 지원:
+ * - appId + privateKey가 있으면: Channel 자체 App 사용
+ * - 없으면: 서버 기본 App 사용 (하위 호환)
  */
 export interface GitHubConfig {
+  /** GitHub App ID (Channel별 App 사용 시) */
+  appId?: string;
+
+  /** 복호화된 Private Key (Channel별 App 사용 시) */
+  privateKey?: string;
+
   /** 복호화된 Installation ID */
   installationId: number;
 
