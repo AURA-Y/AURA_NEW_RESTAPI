@@ -41,6 +41,10 @@ export class User {
   @Column({ type: "timestamp with time zone", nullable: true })
   googleTokenExpiry: Date | null;
 
+  // 프로필 이미지 URL
+  @Column({ type: "text", nullable: true })
+  profileImage: string | null;
+
   @BeforeInsert()
   setInsertDefaults() {
     if (!this.userId) {

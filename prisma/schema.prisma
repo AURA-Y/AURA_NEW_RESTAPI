@@ -13,6 +13,7 @@ model User {
   email              String          @unique(map: "UQ_4a257d2c9837248d70640b3e36e") @db.VarChar(255)
   userPassword       String          @db.VarChar(255)
   nickName           String          @unique(map: "UQ_949dca0566481700b137756b7b6") @db.VarChar(100)
+  profileImage       String?
   googleAccessToken  String?
   googleRefreshToken String?
   googleTokenExpiry  DateTime?       @db.Timestamptz(6)

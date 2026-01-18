@@ -208,7 +208,7 @@ export class AuthService {
    */
   async updateProfile(
     userId: string,
-    updateData: { nickName?: string; currentPassword?: string; newPassword?: string },
+    updateData: { nickName?: string; currentPassword?: string; newPassword?: string; profileImage?: string },
   ): Promise<AuthResponseDto> {
     const user = await this.userRepository.findOne({
       where: { userId },
@@ -217,6 +217,7 @@ export class AuthService {
         email: true,
         nickName: true,
         userPassword: true,
+        profileImage: true,
         createdAt: true,
         updatedAt: true,
       },
@@ -257,6 +258,11 @@ export class AuthService {
       user.userPassword = await bcrypt.hash(updateData.newPassword, 10);
     }
 
+    // 프로필 이미지 변경
+    if (updateData.profileImage !== undefined) {
+      user.profileImage = updateData.profileImage || null;
+    }
+
     await this.userRepository.save(user);
 
     this.logger.log(`User profile updated: ${user.email} (${user.nickName})`);
@@ -269,6 +275,7 @@ export class AuthService {
       userId: user.userId,
       email: user.email,
       nickName: user.nickName,
+      profileImage: user.profileImage,
       createdAt: user.createdAt,
       updatedAt: user.updatedAt,
     });
