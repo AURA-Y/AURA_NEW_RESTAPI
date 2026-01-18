@@ -84,11 +84,12 @@ model Room {
   roomShareLink      String   @unique(map: "UQ_9afb32bb37027f2d69429d50876") @default(dbgenerated("gen_random_uuid()")) @db.VarChar(255)
   createdAt          DateTime @default(now()) @db.Timestamptz(6)
   uploadFileList     Json     @default("[]")
-
+  referencedFiles    String?
+  
   // GitHub 오버라이드 설정 (이 방만 다른 리포지토리 사용)
   githubRepoOverride   String?  @db.VarChar(201)  // "owner/repo" 형식 (예: "acme-org/backend")
   githubLabelsOverride String[] @default([])      // 오버라이드 라벨 (빈 배열이면 Channel 설정 사용)
-
+  
   master             User     @relation("RoomMaster", fields: [masterId], references: [userId], onDelete: Cascade, onUpdate: NoAction, map: "FK_56edc8746a89b70d50816f6aaf3")
   channel            Channel  @relation(fields: [channelId], references: [channelId], onDelete: Cascade, onUpdate: NoAction, map: "FK_c3fb69a467978452fb2160f9dfa")
 }
@@ -104,9 +105,9 @@ model RoomReport {
   channelId           String                     @db.Uuid
   tags                String[]                   @default([])
   participantUserIds  String[]                   @default([]) @db.Uuid
-  masterId            String?                    @db.Uuid // Host 구분용 (Room 삭제 후에도 유지)
-  personalizedReports Json?                      // 개인별 회의록 목록 (JSONB)
   createdAt           DateTime                   @default(now()) @db.Timestamptz(6)
+  masterId            String?                    @db.Uuid
+  personalizedReports Json?
   channel             Channel                    @relation(fields: [channelId], references: [channelId], onDelete: Cascade, onUpdate: NoAction, map: "FK_be4070416b4b332fc4c36a1dae7")
 }
 

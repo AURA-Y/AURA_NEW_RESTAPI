@@ -58,6 +58,17 @@ export class Room {
     createdAt: string;
   }>;
 
+  // 이전 회의에서 참조한 파일 (LiveKit 방에서만 사용, 첨부파일로 표시 안 함)
+  @Column({ type: "jsonb", default: [] })
+  referencedFiles: Array<{
+    fileId: string;
+    fileName: string;
+    fileUrl: string;
+    fileSize: number;
+    createdAt: string;
+    sourceRoomId?: string;  // 원본 회의 ID
+  }>;
+
   @BeforeInsert()
   setDefaults() {
     if (!this.createdAt) {
@@ -71,6 +82,9 @@ export class Room {
     }
     if (!this.uploadFileList) {
       this.uploadFileList = [];
+    }
+    if (!this.referencedFiles) {
+      this.referencedFiles = [];
     }
   }
 

@@ -31,7 +31,7 @@ export interface FileInfo {
   fileName: string;
   fileUrl: string;
   fileSize: number;
-  fileType: string;
+  fileType?: string;  // optional - 프론트엔드에서 파일명으로 직접 추출함
 }
 
 // 개인별 회의록 메타데이터
@@ -56,6 +56,7 @@ export interface ReportDetails {
   shareScope: "CHANNEL" | "PRIVATE";
   uploadFileList: FileInfo[];
   personalizedReports?: PersonalizedReportInfo[]; // 개인별 회의록 목록
+  reportUrl?: string; // report.md S3 URL
 }
 
 @Injectable()
@@ -104,6 +105,12 @@ export class ReportsService {
 
   private getReportMarkdownKey(roomId: string): string {
     return `${this.uploadPrefix}${roomId}/report.md`;
+  }
+
+  private getReportMarkdownUrl(roomId: string): string {
+    const region = this.configService.get<string>("AWS_REGION", "ap-northeast-2");
+    const key = this.getReportMarkdownKey(roomId);
+    return `https://${this.bucketName}.s3.${region}.amazonaws.com/${key}`;
   }
 
   private getReportFolderPrefix(roomId: string): string {
@@ -916,6 +923,26 @@ export class ReportsService {
           }
         }
 
+        // reportUrl 추가
+        parsed.reportUrl = this.getReportMarkdownUrl(roomId);
+
+        // uploadFileList가 없거나 비어있으면 DB Room에서 가져오기
+        if (!parsed.uploadFileList || parsed.uploadFileList.length === 0) {
+          try {
+            const room = await this.roomRepository.findOne({
+              where: { roomId },
+              select: { uploadFileList: true },
+            });
+            if (room && room.uploadFileList && room.uploadFileList.length > 0) {
+              // Room의 uploadFileList 그대로 사용 (fileType은 optional)
+              parsed.uploadFileList = room.uploadFileList;
+              this.logger.log(`[getReportDetailsFromS3] uploadFileList loaded from Room DB for ${roomId}`);
+            }
+          } catch (roomErr) {
+            this.logger.warn(`Failed to fetch uploadFileList from Room for ${roomId}: ${roomErr.message}`);
+          }
+        }
+
         return parsed;
       } catch (error) {
         this.logger.warn(`Report JSON not found at key=${key}, try next`);
@@ -935,6 +962,21 @@ export class ReportsService {
       );
     }
 
+    // Room에서 uploadFileList 가져오기
+    let uploadFileList: FileInfo[] = [];
+    try {
+      const room = await this.roomRepository.findOne({
+        where: { roomId },
+        select: { uploadFileList: true },
+      });
+      if (room && room.uploadFileList) {
+        // Room의 uploadFileList 그대로 사용 (fileType은 optional)
+        uploadFileList = room.uploadFileList as FileInfo[];
+      }
+    } catch (roomErr) {
+      this.logger.warn(`Failed to fetch uploadFileList from Room for ${roomId}: ${roomErr.message}`);
+    }
+
     // DB 데이터를 ReportDetails 형식으로 변환
     const details: ReportDetails & { summary?: string } = {
       reportId: dbReport.reportId,
@@ -946,8 +988,9 @@ export class ReportsService {
       tags: dbReport.tags || [],
       createdAt: dbReport.createdAt.toISOString(),
       shareScope: (dbReport.shareScope as "CHANNEL" | "PRIVATE") || "CHANNEL",
-      uploadFileList: [],
+      uploadFileList,
       summary: undefined,
+      reportUrl: this.getReportMarkdownUrl(roomId),
     };
 
     return details;
