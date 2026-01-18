@@ -635,9 +635,32 @@ export class CalendarService implements OnModuleInit {
   }
 
   /**
+   * 한국 시간(KST) 기준으로 날짜의 특정 시간을 설정하는 헬퍼 함수
+   * @param date 기준 날짜
+   * @param hour 시간 (0-23)
+   * @param minute 분 (0-59)
+   */
+  private setKSTHours(date: Date, hour: number, minute: number = 0): Date {
+    // 한국 시간대 오프셋: UTC+9
+    const KST_OFFSET = 9 * 60; // 분 단위
+
+    // 날짜의 연/월/일 추출 (UTC 기준)
+    const year = date.getUTCFullYear();
+    const month = date.getUTCMonth();
+    const day = date.getUTCDate();
+
+    // KST 기준 시간을 UTC로 변환하여 Date 객체 생성
+    // KST hour:minute → UTC (hour - 9):minute
+    const result = new Date(Date.UTC(year, month, day, hour - 9, minute, 0, 0));
+
+    return result;
+  }
+
+  /**
    * 여러 사용자의 일정을 합쳐서 공통 빈 시간대 찾기
-   * @param startHour 업무 시작 시간 (기본: 9)
-   * @param endHour 업무 종료 시간 (기본: 18)
+   * @param startHour 업무 시작 시간 (기본: 9, KST 기준)
+   * @param endHour 업무 종료 시간 (기본: 18, KST 기준)
+   * @param excludeWeekends 주말 제외 (기본: true)
    */
   async findCommonFreeSlots(
     userIdentifiers: string[],
@@ -647,10 +670,13 @@ export class CalendarService implements OnModuleInit {
       durationMinutes?: number;
       startHour?: number;
       endHour?: number;
+      excludeWeekends?: boolean;
     },
   ): Promise<{ start: string; end: string }[]> {
-    const { timeMin, timeMax, durationMinutes = 60, startHour = 9, endHour = 18 } = params;
+    const { timeMin, timeMax, durationMinutes = 60, startHour = 9, endHour = 18, excludeWeekends = true } = params;
     const allEvents: { start: Date; end: Date }[] = [];
+
+    this.logger.log(`[빈시간찾기] 업무시간: ${startHour}시 ~ ${endHour}시 (KST)`);
 
     // 모든 사용자의 일정 수집
     for (const identifier of userIdentifiers) {
@@ -686,17 +712,28 @@ export class CalendarService implements OnModuleInit {
     const rangeEnd = new Date(timeMax);
     const durationMs = durationMinutes * 60 * 1000;
 
-    // 날짜별로 처리
+    // 날짜별로 처리 (KST 기준)
     const currentDate = new Date(rangeStart);
-    currentDate.setHours(0, 0, 0, 0);
+    // KST 기준 자정으로 설정
+    currentDate.setUTCHours(0 - 9, 0, 0, 0); // UTC 기준 전날 15시 = KST 자정
 
     while (currentDate <= rangeEnd) {
-      // 해당 날짜의 업무 시작/종료 시간 설정
-      const dayStart = new Date(currentDate);
-      dayStart.setHours(startHour, 0, 0, 0);
+      // 주말 제외 옵션 체크 (KST 기준 요일 계산)
+      // dayStart를 기준으로 KST 요일 확인
+      const dayStart = this.setKSTHours(currentDate, startHour, 0);
+      const kstDayOfWeek = (dayStart.getUTCDay() + (dayStart.getUTCHours() >= 15 ? 1 : 0)) % 7;
+      // 더 정확한 KST 요일 계산: dayStart 시간 기준
+      const kstDate = new Date(dayStart.getTime() + 9 * 60 * 60 * 1000);
+      const dayOfWeek = kstDate.getUTCDay(); // 0=일, 6=토
 
-      const dayEnd = new Date(currentDate);
-      dayEnd.setHours(endHour, 0, 0, 0);
+      if (excludeWeekends && (dayOfWeek === 0 || dayOfWeek === 6)) {
+        // 주말이면 건너뜀
+        currentDate.setDate(currentDate.getDate() + 1);
+        continue;
+      }
+
+      // 해당 날짜의 업무 종료 시간 설정 (KST 기준)
+      const dayEnd = this.setKSTHours(currentDate, endHour, 0);
 
       // 범위 조정
       const effectiveStart = dayStart < rangeStart ? rangeStart : dayStart;
