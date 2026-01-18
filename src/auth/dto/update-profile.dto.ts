@@ -16,4 +16,8 @@ export class UpdateProfileDto {
   @MinLength(6, { message: '새 비밀번호는 최소 6자 이상이어야 합니다.' })
   @MaxLength(100, { message: '새 비밀번호는 최대 100자 이하여야 합니다.' })
   newPassword?: string;
+
+  @IsOptional()
+  @IsString({ message: '프로필 이미지 URL은 문자열이어야 합니다.' })
+  profileImage?: string;
 }
