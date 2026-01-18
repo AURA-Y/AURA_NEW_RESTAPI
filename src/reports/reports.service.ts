@@ -34,18 +34,29 @@ export interface FileInfo {
   fileType?: string;  // optional - 프론트엔드에서 파일명으로 직접 추출함
 }
 
+export interface ReferencedFileInfo extends FileInfo {
+  sourceRoomId?: string; // 원본 회의 ID
+}
+
+export interface ExpectedAttendee {
+  userId: string;
+  nickName: string;
+}
+
 export interface ReportDetails {
   reportId: string;
   roomId: string;
   channelId: string;
   topic: string;
-  attendees: string[];
+  attendees: string[];  // 실제 참석자 (닉네임 목록)
+  expectedAttendees?: ExpectedAttendee[];  // 예정 참여자 (불참자 확인용)
   tags?: string[];
   createdAt: string;
   startedAt?: string; // 회의 시작 시간
   endedAt?: string; // 회의 종료 시간
   shareScope: "CHANNEL" | "PRIVATE";
   uploadFileList: FileInfo[];
+  referencedFiles?: ReferencedFileInfo[]; // 이전 회의에서 참조한 파일들
   reportUrl?: string; // report.md S3 URL
 }
 
@@ -493,21 +504,38 @@ export class ReportsService {
     const createdAt = payload.createdAt || new Date().toISOString();
     const startedAt = payload.startedAt || createdAt; // 시작 시간이 없으면 생성 시간 사용
 
-    // Room에서 participantUserIds, masterId 가져오기 (회의록도 동일한 접근 제어 적용)
+    // Room에서 participantUserIds, expectedAttendees, masterId, referencedFiles 가져오기
     let participantUserIds: string[] = [];
+    let expectedAttendees: Array<{ userId: string; nickName: string }> = [];
     let masterId: string | null = null;
+    let referencedFiles: any[] = [];
     const room = await this.roomRepository.findOne({
       where: { roomId: payload.roomId },
-      select: ['roomId', 'participantUserIds', 'masterId']
+      select: ['roomId', 'participantUserIds', 'expectedAttendees', 'masterId', 'referencedFiles']
     });
     if (room) {
       if (room.participantUserIds) {
         participantUserIds = room.participantUserIds;
       }
+      if (room.expectedAttendees) {
+        expectedAttendees = room.expectedAttendees;
+      }
       if (room.masterId) {
         masterId = room.masterId;
       }
+      if (room.referencedFiles) {
+        referencedFiles = room.referencedFiles;
+      }
     }
+
+    // uploadFileList를 DB 저장 형식으로 변환
+    const uploadFileListForDb = (payload.uploadFileList || []).map(f => ({
+      fileId: f.fileId,
+      fileName: f.fileName,
+      fileUrl: f.fileUrl,
+      fileSize: f.fileSize,
+      createdAt: createdAt,
+    }));
 
     const meta = this.reportsRepository.create({
       reportId,
@@ -516,10 +544,13 @@ export class ReportsService {
       topic: payload.topic,
       attendees: payload.attendees,
       participantUserIds,  // Room에서 복사한 participantUserIds
+      expectedAttendees,  // Room에서 복사한 예정 참여자 (불참자 확인용)
       masterId,  // Room에서 복사한 masterId (Host 구분용)
       tags: payload.tags || [],
       createdAt: new Date(createdAt),
       startedAt: new Date(startedAt),
+      uploadFileList: uploadFileListForDb,  // 업로드 파일 목록
+      referencedFiles: referencedFiles,  // Room에서 복사한 참조 파일 목록
     });
     await this.reportsRepository.save(meta);
 
@@ -753,20 +784,27 @@ export class ReportsService {
         // reportUrl 추가
         parsed.reportUrl = this.getReportMarkdownUrl(roomId);
 
-        // uploadFileList가 없거나 비어있으면 DB Room에서 가져오기
-        if (!parsed.uploadFileList || parsed.uploadFileList.length === 0) {
+        // uploadFileList, referencedFiles, expectedAttendees가 없으면 RoomReport DB에서 가져오기
+        if (!parsed.uploadFileList || parsed.uploadFileList.length === 0 || !parsed.referencedFiles || !parsed.expectedAttendees) {
           try {
-            const room = await this.roomRepository.findOne({
-              where: { roomId },
-              select: { uploadFileList: true },
+            const dbReport = await this.reportsRepository.findOne({
+              where: { reportId: roomId },
+              select: { uploadFileList: true, referencedFiles: true, expectedAttendees: true },
             });
-            if (room && room.uploadFileList && room.uploadFileList.length > 0) {
-              // Room의 uploadFileList 그대로 사용 (fileType은 optional)
-              parsed.uploadFileList = room.uploadFileList;
-              this.logger.log(`[getReportDetailsFromS3] uploadFileList loaded from Room DB for ${roomId}`);
+            if (dbReport) {
+              if (!parsed.uploadFileList || parsed.uploadFileList.length === 0) {
+                parsed.uploadFileList = dbReport.uploadFileList || [];
+              }
+              if (!parsed.referencedFiles) {
+                parsed.referencedFiles = dbReport.referencedFiles || [];
+              }
+              if (!parsed.expectedAttendees) {
+                parsed.expectedAttendees = dbReport.expectedAttendees || [];
+              }
+              this.logger.log(`[getReportDetailsFromS3] Files and expectedAttendees loaded from RoomReport DB for ${roomId}`);
             }
-          } catch (roomErr) {
-            this.logger.warn(`Failed to fetch uploadFileList from Room for ${roomId}: ${roomErr.message}`);
+          } catch (dbErr) {
+            this.logger.warn(`Failed to fetch data from RoomReport for ${roomId}: ${dbErr.message}`);
           }
         }
 
@@ -789,20 +827,10 @@ export class ReportsService {
       );
     }
 
-    // Room에서 uploadFileList 가져오기
-    let uploadFileList: FileInfo[] = [];
-    try {
-      const room = await this.roomRepository.findOne({
-        where: { roomId },
-        select: { uploadFileList: true },
-      });
-      if (room && room.uploadFileList) {
-        // Room의 uploadFileList 그대로 사용 (fileType은 optional)
-        uploadFileList = room.uploadFileList as FileInfo[];
-      }
-    } catch (roomErr) {
-      this.logger.warn(`Failed to fetch uploadFileList from Room for ${roomId}: ${roomErr.message}`);
-    }
+    // RoomReport DB에서 직접 파일 정보 가져오기 (Room 삭제 후에도 조회 가능)
+    const uploadFileList = (dbReport.uploadFileList || []) as FileInfo[];
+    const referencedFiles = (dbReport.referencedFiles || []) as ReferencedFileInfo[];
+    const expectedAttendees = (dbReport.expectedAttendees || []) as Array<{ userId: string; nickName: string }>;
 
     // DB 데이터를 ReportDetails 형식으로 변환
     const details: ReportDetails & { summary?: string } = {
@@ -811,12 +839,14 @@ export class ReportsService {
       channelId: dbReport.channelId,
       topic: dbReport.topic,
       attendees: dbReport.attendees || [],
+      expectedAttendees,  // 예정 참여자 (불참자 확인용)
       tags: dbReport.tags || [],
       createdAt: dbReport.createdAt.toISOString(),
       startedAt: dbReport.startedAt?.toISOString(),
       endedAt: dbReport.endedAt?.toISOString(),
       shareScope: (dbReport.shareScope as "CHANNEL" | "PRIVATE") || "CHANNEL",
       uploadFileList,
+      referencedFiles: referencedFiles.length > 0 ? referencedFiles : undefined,
       summary: undefined,
       reportUrl: this.getReportMarkdownUrl(roomId),
     };
@@ -839,6 +869,7 @@ export class ReportsService {
 
     this.logger.log(`Meeting end time set: reportId=${reportId}, endedAt=${endTime.toISOString()}`);
   }
+
 
   async downloadFileFromS3(fileUrl: string): Promise<{
     stream: any;

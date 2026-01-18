@@ -44,6 +44,7 @@ export class RoomService {
       masterId: data.masterId,
       channelId: data.channelId,
       participantUserIds: data.participantUserIds || [],  // 빈 배열 = 전체 공개
+      expectedAttendees: data.expectedAttendees || [],  // 예정 참여자 (불참자 확인용)
       roomPassword: data.roomPassword || null,
       roomShareLink: this.generateShareLink(data.roomId),
       attendees: data.attendees || [],
@@ -144,7 +145,7 @@ export class RoomService {
       console.log(`[Room 삭제] RoomReport 업데이트: attendees=${mergedAttendees.join(', ')}, endedAt=${new Date().toISOString()}`);
     }
 
-    // Room 삭제 (RoomReport는 FK 없이 독립적으로 유지됨)
+    // Room 삭제 (RoomReport는 FK 없이 독립적으로 유지됨, 파일 정보는 createReport에서 이미 저장됨)
     await this.roomRepository.delete({ roomId });
   }
 

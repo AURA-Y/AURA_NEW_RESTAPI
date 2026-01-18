@@ -38,6 +38,14 @@ export class CreateRoomDto {
   @IsOptional()
   participantUserIds?: string[];  // 빈 배열 = 전체 공개, 값이 있으면 해당 유저만 접근 가능
 
+  // 예정 참여자 (userId + nickName) - 불참자 확인용
+  @IsArray()
+  @IsOptional()
+  expectedAttendees?: Array<{
+    userId: string;
+    nickName: string;
+  }>;
+
   @IsArray()
   @IsOptional()
   attendees?: string[];

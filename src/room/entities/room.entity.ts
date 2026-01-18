@@ -35,8 +35,15 @@ export class Room {
   @Column("uuid", { array: true, default: [] })
   participantUserIds: string[];  // 빈 배열 = 전체 공개, 값이 있으면 해당 유저만 접근 가능
 
+  // 예정 참여자 (userId + nickName)
+  @Column({ type: "jsonb", default: [] })
+  expectedAttendees: Array<{
+    userId: string;
+    nickName: string;
+  }>;
+
   @Column("text", { array: true, default: [] })
-  attendees: string[];
+  attendees: string[];  // 실제 참석자 (닉네임 목록)
 
   @Column({ type: "text", nullable: true })
   token: string | null;
@@ -70,6 +77,9 @@ export class Room {
   setDefaults() {
     if (!this.createdAt) {
       this.createdAt = new Date();
+    }
+    if (!this.expectedAttendees) {
+      this.expectedAttendees = [];
     }
     if (!this.attendees) {
       this.attendees = [];
