@@ -12,8 +12,7 @@ RUN bun install --frozen-lockfile
 # Copy source code
 COPY . .
 
-# Generate Prisma client (with dummy DATABASE_URL for build-time only)
-ENV DATABASE_URL="postgresql://dummy:dummy@localhost:5432/dummy?schema=public"
+# Generate Prisma client
 RUN bun run prisma:generate
 
 # Build application
