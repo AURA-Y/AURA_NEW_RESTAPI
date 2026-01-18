@@ -32,6 +32,7 @@ services:
       - DB_SSL=false
       - JWT_SECRET=your-secret-key-change-this-in-production
       - JWT_EXPIRES_IN=7d
+      - ENCRYPTION_KEY=6ceaf41f0515782b840f0dda1b5fcba8bbd1f5a0aa412906f823bba2a0e0d86e
     depends_on:
       - postgres
     networks:
