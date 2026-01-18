@@ -58,6 +58,7 @@ export interface ReportDetails {
   uploadFileList: FileInfo[];
   referencedFiles?: ReferencedFileInfo[]; // 이전 회의에서 참조한 파일들
   reportUrl?: string; // report.md S3 URL
+  hostName?: string; // 호스트 이름
 }
 
 @Injectable()
@@ -244,7 +245,7 @@ export class ReportsService {
       .getMany();
   }
 
-  async findAllByUserId(userId: string): Promise<RoomReport[]> {
+  async findAllByUserId(userId: string): Promise<(RoomReport & { hostName?: string })[]> {
     const user = await this.userRepository.findOne({
       where: { userId },
       select: { userId: true, nickName: true },
@@ -293,9 +294,27 @@ export class ReportsService {
       new Map(allAccessibleReports.map(r => [r.reportId, r])).values()
     );
 
-    return uniqueReports.sort((a, b) =>
+    const sortedReports = uniqueReports.sort((a, b) =>
       new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
     );
+
+    // 3. masterId로 호스트 이름 조회
+    const masterIds = [...new Set(sortedReports.map(r => r.masterId).filter(Boolean))] as string[];
+    const hostMap = new Map<string, string>();
+
+    if (masterIds.length > 0) {
+      const hosts = await this.userRepository.find({
+        where: { userId: In(masterIds) },
+        select: ['userId', 'nickName']
+      });
+      hosts.forEach(h => hostMap.set(h.userId, h.nickName));
+    }
+
+    // 4. 호스트 이름 추가
+    return sortedReports.map(report => ({
+      ...report,
+      hostName: report.masterId ? hostMap.get(report.masterId) : undefined
+    }));
   }
 
   async create(reportData: Partial<RoomReport>): Promise<RoomReport> {
