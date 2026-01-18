@@ -8,6 +8,11 @@
       {
         "include": "calendar/google-service-account.json",
         "outDir": "dist/src"
+      },
+      {
+        "include": "../generated/**/*",
+        "outDir": "dist/generated",
+        "watchAssets": true
       }
     ]
   }

@@ -1,6 +1,7 @@
 generator client {
-  provider = "prisma-client-js"
-  output   = "../generated/prisma"
+  provider   = "prisma-client-js"
+  output     = "../generated/prisma"
+  engineType = "library"
 }
 
 datasource db {
@@ -24,22 +25,27 @@ model User {
 }
 
 model Channel {
-  channelId            String          @id @default(uuid()) @db.Uuid
-  channelName          String          @db.VarChar(100)
-  ownerId              String          @db.Uuid
-  createdAt            DateTime        @default(now()) @db.Timestamptz(6)
-  slackWebhookUrl      String?
-  githubAutoCreate     Boolean         @default(false)
-  githubIssueLabels    String[]        @default([])
-  githubRepoName       String?         @db.VarChar(100)
-  githubRepoOwner      String?         @db.VarChar(100)
-  githubInstallationId String?
-  owner                User            @relation("ChannelOwner", fields: [ownerId], references: [userId], onDelete: Cascade, onUpdate: NoAction, map: "FK_79ff036dd0e6747303835b0b3b9")
-  members              ChannelMember[]
-  joinRequests         JoinRequest[]
-  rooms                Room[]
-  reports              RoomReport[]
-  teams                Team[]
+  channelId       String          @id @default(uuid()) @db.Uuid
+  channelName     String          @db.VarChar(100)
+  slackWebhookUrl String?         @db.Text // Slack Incoming Webhook URL for sharing meeting reports
+  ownerId         String          @db.Uuid
+  createdAt       DateTime        @default(now()) @db.Timestamptz(6)
+
+  // GitHub App 연동 설정 (Channel별 독립 GitHub App 지원)
+  githubAppId          String?   @db.VarChar(20)   // GitHub App ID (평문, 민감하지 않음)
+  githubPrivateKey     String?   @db.Text          // 암호화된 Private Key (PEM 형식)
+  githubInstallationId String?   @db.Text          // 암호화된 GitHub App Installation ID
+  githubRepoOwner      String?   @db.VarChar(100)  // Organization 또는 User (예: "acme-org")
+  githubRepoName       String?   @db.VarChar(100)  // Repository 이름 (예: "team-meetings")
+  githubIssueLabels    String[]  @default([])      // Issue 생성 시 기본 라벨 (예: ["meeting-summary"])
+  githubAutoCreate     Boolean   @default(false)   // 회의 종료 시 자동 Issue 생성 여부
+
+  owner        User            @relation("ChannelOwner", fields: [ownerId], references: [userId], onDelete: Cascade, onUpdate: NoAction, map: "FK_79ff036dd0e6747303835b0b3b9")
+  members      ChannelMember[]
+  joinRequests JoinRequest[]
+  rooms        Room[]
+  reports      RoomReport[]
+  teams        Team[]
 }
 
 model ChannelMember {
@@ -65,24 +71,27 @@ model Team {
 }
 
 model Room {
-  roomId               String   @id @db.VarChar(255)
-  roomTopic            String   @db.VarChar(255)
-  roomDescription      String?
-  roomPassword         String?  @db.VarChar(50)
-  masterId             String   @db.Uuid
-  channelId            String   @db.Uuid
-  attendees            String[] @default([])
-  token                String?
-  tags                 String[] @default([])
-  participantUserIds   String[] @default([]) @db.Uuid
-  roomShareLink        String   @unique(map: "UQ_9afb32bb37027f2d69429d50876") @default(dbgenerated("gen_random_uuid()")) @db.VarChar(255)
-  createdAt            DateTime @default(now()) @db.Timestamptz(6)
-  uploadFileList       Json     @default("[]")
-  githubLabelsOverride String[] @default([])
-  githubRepoOverride   String?  @db.VarChar(201)
-  referencedFiles      String?
-  master               User     @relation("RoomMaster", fields: [masterId], references: [userId], onDelete: Cascade, onUpdate: NoAction, map: "FK_56edc8746a89b70d50816f6aaf3")
-  channel              Channel  @relation(fields: [channelId], references: [channelId], onDelete: Cascade, onUpdate: NoAction, map: "FK_c3fb69a467978452fb2160f9dfa")
+  roomId             String   @id @db.VarChar(255)
+  roomTopic          String   @db.VarChar(255)
+  roomDescription    String?
+  roomPassword       String?  @db.VarChar(50)
+  masterId           String   @db.Uuid
+  channelId          String   @db.Uuid
+  attendees          String[] @default([])
+  token              String?
+  tags               String[] @default([])
+  participantUserIds String[] @default([]) @db.Uuid
+  roomShareLink      String   @unique(map: "UQ_9afb32bb37027f2d69429d50876") @default(dbgenerated("gen_random_uuid()")) @db.VarChar(255)
+  createdAt          DateTime @default(now()) @db.Timestamptz(6)
+  uploadFileList     Json     @default("[]")
+  referencedFiles    String?
+  
+  // GitHub 오버라이드 설정 (이 방만 다른 리포지토리 사용)
+  githubRepoOverride   String?  @db.VarChar(201)  // "owner/repo" 형식 (예: "acme-org/backend")
+  githubLabelsOverride String[] @default([])      // 오버라이드 라벨 (빈 배열이면 Channel 설정 사용)
+  
+  master             User     @relation("RoomMaster", fields: [masterId], references: [userId], onDelete: Cascade, onUpdate: NoAction, map: "FK_56edc8746a89b70d50816f6aaf3")
+  channel            Channel  @relation(fields: [channelId], references: [channelId], onDelete: Cascade, onUpdate: NoAction, map: "FK_c3fb69a467978452fb2160f9dfa")
 }
 
 model RoomReport {

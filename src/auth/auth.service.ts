@@ -93,14 +93,28 @@ export class AuthService {
 
     this.logger.log(`New user registered: ${nickname} (${email})`);
 
-    // 기본 채널에 자동 가입
-    const membership = this.channelMemberRepository.create({
-      channelId: DEFAULT_CHANNEL_ID,
-      userId: user.userId,
-      role: ChannelRole.MEMBER,
-    });
-    await this.channelMemberRepository.save(membership);
-    this.logger.log(`User added to default channel: ${user.userId}`);
+    // 기본 채널에 자동 가입 (채널이 존재하는 경우에만)
+    try {
+      // 채널 존재 여부 확인 (TypeORM의 queryRunner 사용)
+      const channelExists = await this.channelMemberRepository.manager.query(
+        `SELECT "channelId" FROM "Channel" WHERE "channelId" = $1 LIMIT 1`,
+        [DEFAULT_CHANNEL_ID]
+      );
+      
+      if (channelExists && channelExists.length > 0) {
+        const membership = this.channelMemberRepository.create({
+          channelId: DEFAULT_CHANNEL_ID,
+          userId: user.userId,
+          role: ChannelRole.MEMBER,
+        });
+        await this.channelMemberRepository.save(membership);
+        this.logger.log(`User added to default channel: ${user.userId}`);
+      } else {
+        this.logger.warn(`Default channel ${DEFAULT_CHANNEL_ID} not found, skipping auto-join`);
+      }
+    } catch (e) {
+      this.logger.warn(`Failed to add user to default channel: ${e.message}`);
+    }
 
     // JWT 토큰 생성
     const accessToken = this.generateToken(user);

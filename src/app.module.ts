@@ -19,6 +19,12 @@ import {
   RoomReport,
 } from './room/entities';
 
+// GitHub Issue Integration 모듈
+import { PrismaModule } from './prisma/prisma.module';
+import { SecretsModule } from './secrets/secrets.module';
+import { EncryptionModule } from './encryption/encryption.module';
+import { GitHubModule } from './github/github.module';
+
 
 @Module({
   imports: [
@@ -53,6 +59,12 @@ import {
             : false,
       }),
     }),
+    // Global 모듈 (GitHub Issue Integration)
+    PrismaModule,
+    SecretsModule,
+    EncryptionModule,
+
+    // 기존 모듈
     AuthModule,
     ReportsModule,
     RoomModule,
@@ -60,6 +72,9 @@ import {
     SseModule,
     CalendarModule,
     RecordingsModule,
+
+    // GitHub 모듈
+    GitHubModule,
   ],
   controllers: [HealthController],
 })
