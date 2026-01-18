@@ -180,10 +180,12 @@ export class GitHubController {
    * {
    *   "title": "[회의 요약] 스프린트 플래닝",
    *   "body": "## 회의 내용...",
-   *   "labels": ["meeting-summary"]
+   *   "labels": ["meeting-summary"],
+   *   "repoOverride": "owner/repo" (선택사항)
    * }
    *
    * title, body가 없으면 roomId로 회의 정보 조회하여 자동 생성
+   * repoOverride가 있으면 해당 Repository에 Issue 생성 (일회성)
    */
   @Post('rooms/:roomId/issues')
   async createIssue(
@@ -197,6 +199,15 @@ export class GitHubController {
       throw new BadRequestException(
         'GitHub is not configured for this room or channel',
       );
+    }
+
+    // repoOverride가 있으면 config의 owner/repo를 일회성 오버라이드
+    if (dto.repoOverride) {
+      const [overrideOwner, overrideRepo] = dto.repoOverride.split('/');
+      if (overrideOwner && overrideRepo) {
+        config.owner = overrideOwner;
+        config.repo = overrideRepo;
+      }
     }
 
     // 제목과 본문이 없으면 기본값 생성

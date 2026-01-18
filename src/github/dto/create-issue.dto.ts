@@ -4,12 +4,13 @@ import {
   IsOptional,
   MaxLength,
   MinLength,
+  Matches,
 } from 'class-validator';
 
 /**
  * GitHub Issue 생성 요청 DTO
  *
- * POST /restapi/reports/:reportId/github-issue
+ * POST /restapi/github/rooms/:roomId/issues
  */
 export class CreateGitHubIssueDto {
   @IsString()
@@ -26,6 +27,13 @@ export class CreateGitHubIssueDto {
   @IsString({ each: true })
   @IsOptional()
   labels?: string[]; // 없으면 Channel/Room 설정 사용
+
+  @IsString()
+  @IsOptional()
+  @Matches(/^[a-zA-Z0-9_.-]+\/[a-zA-Z0-9_.-]+$/, {
+    message: 'repoOverride must be in "owner/repo" format',
+  })
+  repoOverride?: string; // "owner/repo" 형식으로 다른 Repository에 Issue 생성
 }
 
 /**
