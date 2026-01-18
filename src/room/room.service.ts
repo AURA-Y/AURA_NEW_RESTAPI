@@ -123,21 +123,25 @@ export class RoomService {
       throw new ForbiddenException("Only the master can delete this room");
     }
 
-    // Room 삭제 전에 attendees를 RoomReport에 동기화 (Room 삭제 후 웹훅에서 사용)
-    if (room.attendees && room.attendees.length > 0) {
-      const report = await this.roomReportRepository.findOne({
-        where: { reportId: roomId },
-      });
+    // Room 삭제 전에 attendees 동기화 + endedAt 설정
+    const report = await this.roomReportRepository.findOne({
+      where: { reportId: roomId },
+    });
 
-      if (report) {
-        // Room의 attendees를 RoomReport에 병합 (중복 제거)
-        const mergedAttendees = [...new Set([...report.attendees, ...room.attendees])];
-        await this.roomReportRepository.update(
-          { reportId: roomId },
-          { attendees: mergedAttendees }
-        );
-        console.log(`[Room 삭제] RoomReport attendees 동기화: ${mergedAttendees.join(', ')}`);
-      }
+    if (report) {
+      // Room의 attendees를 RoomReport에 병합 (중복 제거) + 회의 종료 시간 설정
+      const mergedAttendees = room.attendees && room.attendees.length > 0
+        ? [...new Set([...report.attendees, ...room.attendees])]
+        : report.attendees;
+
+      await this.roomReportRepository.update(
+        { reportId: roomId },
+        {
+          attendees: mergedAttendees,
+          endedAt: new Date()  // 회의 종료 시간 설정
+        }
+      );
+      console.log(`[Room 삭제] RoomReport 업데이트: attendees=${mergedAttendees.join(', ')}, endedAt=${new Date().toISOString()}`);
     }
 
     // Room 삭제 (RoomReport는 FK 없이 독립적으로 유지됨)
