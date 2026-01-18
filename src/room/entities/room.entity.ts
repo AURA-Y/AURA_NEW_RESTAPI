@@ -17,9 +17,6 @@ export class Room {
   @Column({ type: "varchar", length: 255, nullable: false })
   roomTopic: string;
 
-  @Column({ type: "text", nullable: true })
-  roomDescription: string | null;
-
   @Column({ type: "varchar", length: 50, nullable: true })
   roomPassword: string | null;
 

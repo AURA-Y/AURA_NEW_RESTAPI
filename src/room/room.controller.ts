@@ -47,7 +47,6 @@ export class RoomController {
         channelId: room.channelId,
         roomId: room.roomId,
         roomTopic: room.roomTopic,
-        roomDescription: room.roomDescription,
         masterNickName: req.user.nickName,
       }).catch(err => console.error('[Room] Slack 알림 전송 실패:', err.message));
     }

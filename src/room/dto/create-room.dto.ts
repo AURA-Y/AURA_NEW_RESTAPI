@@ -22,10 +22,6 @@ export class CreateRoomDto {
 
   @IsString()
   @IsOptional()
-  roomDescription?: string;
-
-  @IsString()
-  @IsOptional()
   @MaxLength(50)
   roomPassword?: string;
 

@@ -23,9 +23,6 @@ export class RoomReport {
   @Column({ type: "varchar", length: 255 })
   topic: string;
 
-  @Column({ type: "text", nullable: true })
-  description: string | null;
-
   @Column("text", { array: true, default: [] })
   attendees: string[];
 
@@ -34,6 +31,12 @@ export class RoomReport {
 
   @Column({ type: "timestamp with time zone", default: () => "CURRENT_TIMESTAMP"})
   createdAt: Date;
+
+  @Column({ type: "timestamp with time zone", nullable: true })
+  startedAt: Date | null;  // 회의 시작 시간
+
+  @Column({ type: "timestamp with time zone", nullable: true })
+  endedAt: Date | null;  // 회의 종료 시간
 
   @Column({
     type: "enum",
@@ -57,16 +60,6 @@ export class RoomReport {
 
   @Column({ type: "uuid", nullable: true })
   masterId: string | null;  // Host 구분용 (Room 삭제 후에도 유지)
-
-  @Column({ type: "jsonb", nullable: true })
-  personalizedReports: Array<{
-    participantId: string;
-    name: string;
-    role?: string;
-    reportUrl: string;
-    downloadUrl: string;
-    createdAt: string;
-  }> | null;  // 개인별 회의록 목록
 
   @BeforeInsert()
   setDefaults() {

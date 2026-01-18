@@ -74,7 +74,6 @@ model Team {
 model Room {
   roomId             String   @id @db.VarChar(255)
   roomTopic          String   @db.VarChar(255)
-  roomDescription    String?
   roomPassword       String?  @db.VarChar(50)
   masterId           String   @db.Uuid
   channelId          String   @db.Uuid
@@ -86,11 +85,11 @@ model Room {
   createdAt          DateTime @default(now()) @db.Timestamptz(6)
   uploadFileList     Json     @default("[]")
   referencedFiles    String?
-  
+
   // GitHub 오버라이드 설정 (이 방만 다른 리포지토리 사용)
   githubRepoOverride   String?  @db.VarChar(201)  // "owner/repo" 형식 (예: "acme-org/backend")
   githubLabelsOverride String[] @default([])      // 오버라이드 라벨 (빈 배열이면 Channel 설정 사용)
-  
+
   master             User     @relation("RoomMaster", fields: [masterId], references: [userId], onDelete: Cascade, onUpdate: NoAction, map: "FK_56edc8746a89b70d50816f6aaf3")
   channel            Channel  @relation(fields: [channelId], references: [channelId], onDelete: Cascade, onUpdate: NoAction, map: "FK_c3fb69a467978452fb2160f9dfa")
 }
@@ -98,7 +97,6 @@ model Room {
 model RoomReport {
   reportId            String                     @id @db.VarChar(255)
   topic               String                     @db.VarChar(255)
-  description         String?
   attendees           String[]                   @default([])
   shareScope          RoomReport_sharescope_enum @default(CHANNEL)
   specialAuth         String[]                   @default([]) @db.Uuid
@@ -107,8 +105,9 @@ model RoomReport {
   tags                String[]                   @default([])
   participantUserIds  String[]                   @default([]) @db.Uuid
   createdAt           DateTime                   @default(now()) @db.Timestamptz(6)
+  startedAt           DateTime?                  @db.Timestamptz(6)
+  endedAt             DateTime?                  @db.Timestamptz(6)
   masterId            String?                    @db.Uuid
-  personalizedReports Json?
   channel             Channel                    @relation(fields: [channelId], references: [channelId], onDelete: Cascade, onUpdate: NoAction, map: "FK_be4070416b4b332fc4c36a1dae7")
 }
 
