@@ -12,6 +12,9 @@ RUN bun install --frozen-lockfile
 # Copy source code
 COPY . .
 
+# Generate Prisma client
+RUN bun run prisma:generate
+
 # Build application
 RUN bun run build
 
@@ -28,6 +31,9 @@ RUN bun install --frozen-lockfile --production
 
 # Copy built application from builder
 COPY --from=builder /app/dist ./dist
+
+# Copy Prisma generated client from builder
+COPY --from=builder /app/generated ./generated
 
 # Expose port
 EXPOSE 3002
