@@ -2,34 +2,11 @@ import {
   IsArray,
   IsOptional,
   IsString,
-  ValidateNested,
 } from "class-validator";
-import { Type } from "class-transformer";
-
-/**
- * 개인별 회의록 정보
- */
-export class PersonalizedReportDto {
-  @IsString()
-  participantId: string;
-
-  @IsString()
-  name: string;
-
-  @IsOptional()
-  @IsString()
-  role?: string;
-
-  @IsString()
-  url: string;
-
-  @IsString()
-  downloadUrl: string;
-}
 
 /**
  * RAG 서버에서 보내는 콜백 JSON
- * 회의 종료 후 회의록 생성 완료 시 호출됨
+ * 회의록 생성 완료 시 호출됨 (회의 중 또는 종료 후)
  */
 export class RagReportCallbackDto {
   @IsString()
@@ -64,12 +41,10 @@ export class RagReportCallbackDto {
   slack_webhook_url?: string;
 
   @IsOptional()
-  @IsArray()
-  @ValidateNested({ each: true })
-  @Type(() => PersonalizedReportDto)
-  personalized_reports?: PersonalizedReportDto[]; // 개인별 회의록
+  @IsString()
+  completed_at?: string; // 회의록 생성 완료 시간 (ISO 8601)
 
   @IsOptional()
   @IsString()
-  completed_at?: string;
+  ended_at?: string; // 회의 종료 시간 (ISO 8601) - 종료 후 생성 시에만 전달
 }

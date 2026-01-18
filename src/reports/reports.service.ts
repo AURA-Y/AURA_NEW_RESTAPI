@@ -34,28 +34,18 @@ export interface FileInfo {
   fileType?: string;  // optional - 프론트엔드에서 파일명으로 직접 추출함
 }
 
-// 개인별 회의록 메타데이터
-export interface PersonalizedReportInfo {
-  participantId: string;
-  name: string;
-  role?: string;
-  reportUrl: string;
-  downloadUrl: string;
-  createdAt: string;
-}
-
 export interface ReportDetails {
   reportId: string;
   roomId: string;
   channelId: string;
   topic: string;
-  description?: string;
   attendees: string[];
   tags?: string[];
   createdAt: string;
+  startedAt?: string; // 회의 시작 시간
+  endedAt?: string; // 회의 종료 시간
   shareScope: "CHANNEL" | "PRIVATE";
   uploadFileList: FileInfo[];
-  personalizedReports?: PersonalizedReportInfo[]; // 개인별 회의록 목록
   reportUrl?: string; // report.md S3 URL
 }
 
@@ -200,8 +190,6 @@ export class ReportsService {
 
   /**
    * 접근 권한을 확인한 후 S3에서 리포트 상세 조회
-   * - Host: 종합회의록 + 전체 개인별 회의록
-   * - Participant: 종합회의록 + 자신의 개인별 회의록만
    */
   async getReportDetailsFromS3WithAccessCheck(reportId: string, userId: string): Promise<ReportDetails & { summary?: string }> {
     const hasAccess = await this.checkReportAccess(reportId, userId);
@@ -209,39 +197,7 @@ export class ReportsService {
       throw new ForbiddenException('이 회의록에 접근할 권한이 없습니다');
     }
 
-    const reportDetails = await this.getReportDetailsFromS3(reportId);
-
-    // Host 여부 확인 (RoomReport의 masterId 사용 - Room 삭제 후에도 유지됨)
-    const report = await this.reportsRepository.findOne({
-      where: { reportId },
-      select: ['masterId'],
-    });
-
-    let isHost = report?.masterId === userId;
-
-    // 기존 리포트에 masterId가 없으면 Room에서 fallback
-    if (!report?.masterId) {
-      const room = await this.roomRepository.findOne({
-        where: { roomId: reportId },
-        select: ['masterId'],
-      });
-      isHost = room?.masterId === userId;
-    }
-
-    // Host가 아니면 개인별 회의록 필터링 (자신의 것만)
-    if (!isHost && reportDetails.personalizedReports) {
-      // userId로 필터링 (participantId가 `user-{index}` 형태일 수 있으므로 name으로도 확인)
-      const user = await this.userRepository.findOne({
-        where: { userId },
-        select: ['nickName'],
-      });
-
-      reportDetails.personalizedReports = reportDetails.personalizedReports.filter(
-        (pr) => pr.participantId === userId || pr.name === user?.nickName
-      );
-    }
-
-    return reportDetails;
+    return this.getReportDetailsFromS3(reportId);
   }
 
   /**
@@ -525,16 +481,17 @@ export class ReportsService {
     reportId?: string;
     userId: string;
     topic: string;
-    description?: string;
     attendees: string[];
     tags?: string[];
     uploadFileList: FileInfo[];
     createdAt?: string;
+    startedAt?: string; // 회의 시작 시간
     channelId: string;
   }): Promise<ReportDetails> {
     // reportId는 roomId와 동일하게 사용 (엔티티 설계 원칙)
     const reportId = payload.reportId || payload.roomId;
     const createdAt = payload.createdAt || new Date().toISOString();
+    const startedAt = payload.startedAt || createdAt; // 시작 시간이 없으면 생성 시간 사용
 
     // Room에서 participantUserIds, masterId 가져오기 (회의록도 동일한 접근 제어 적용)
     let participantUserIds: string[] = [];
@@ -557,12 +514,12 @@ export class ReportsService {
       roomId: payload.roomId,
       channelId: payload.channelId,
       topic: payload.topic,
-      description: payload.description || null,
       attendees: payload.attendees,
       participantUserIds,  // Room에서 복사한 participantUserIds
       masterId,  // Room에서 복사한 masterId (Host 구분용)
       tags: payload.tags || [],
       createdAt: new Date(createdAt),
+      startedAt: new Date(startedAt),
     });
     await this.reportsRepository.save(meta);
 
@@ -571,10 +528,10 @@ export class ReportsService {
       roomId: payload.roomId,
       channelId: payload.channelId,
       topic: payload.topic,
-      description: payload.description,
       attendees: payload.attendees,
       tags: payload.tags || [],
       createdAt,
+      startedAt,
       shareScope: "CHANNEL",
       uploadFileList: payload.uploadFileList || [],
     };
@@ -688,128 +645,6 @@ export class ReportsService {
     return { success: true, summaryUrl };
   }
 
-  /**
-   * 개인별 회의록 저장
-   * RAG 서버에서 personalized_reports로 전달된 개인별 피드백/회의록 저장
-   * - 각 참여자별 JSON 파일 저장
-   * - report.json에 전체 목록 업데이트 (조회용)
-   * @param roomId 회의 ID
-   * @param personalizedReports 개인별 회의록 배열
-   */
-  async savePersonalizedReports(
-    roomId: string,
-    personalizedReports: Array<{
-      participantId: string;
-      name: string;
-      role?: string;
-      url: string;
-      downloadUrl: string;
-    }>
-  ): Promise<{ saved: number; failed: number }> {
-    let saved = 0;
-    let failed = 0;
-    const savedReports: PersonalizedReportInfo[] = [];
-
-    for (const report of personalizedReports) {
-      try {
-        // 개인별 회의록은 rooms/{roomId}/personalized/{participantId}.json 에 메타데이터 저장
-        const personalizedKey = `${this.uploadPrefix}${roomId}/personalized/${report.participantId}.json`;
-
-        const personalizedData: PersonalizedReportInfo = {
-          participantId: report.participantId,
-          name: report.name,
-          role: report.role || undefined,
-          reportUrl: report.url,
-          downloadUrl: report.downloadUrl,
-          createdAt: new Date().toISOString(),
-        };
-
-        await this.s3Client.send(
-          new PutObjectCommand({
-            Bucket: this.bucketName,
-            Key: personalizedKey,
-            Body: JSON.stringify(personalizedData, null, 2),
-            ContentType: "application/json",
-          })
-        );
-
-        savedReports.push(personalizedData);
-        this.logger.log(
-          `[개인별 회의록] 저장 완료 - ${report.name} (${report.participantId})`
-        );
-        saved++;
-      } catch (error) {
-        this.logger.error(
-          `[개인별 회의록] 저장 실패 - ${report.name}: ${error.message}`
-        );
-        failed++;
-      }
-    }
-
-    // report.json에 personalizedReports 목록 업데이트
-    if (savedReports.length > 0) {
-      try {
-        const current = await this.getReportDetailsFromS3(roomId);
-        const updated: ReportDetails = {
-          ...current,
-          personalizedReports: savedReports,
-        };
-        await this.saveReportDetailsToS3(updated);
-        this.logger.log(`[개인별 회의록] report.json 업데이트 완료 - ${savedReports.length}개`);
-      } catch (error) {
-        this.logger.error(`[개인별 회의록] report.json 업데이트 실패: ${error.message}`);
-      }
-
-      // DB에도 personalizedReports 저장
-      try {
-        await this.reportsRepository.update(
-          { reportId: roomId },
-          { personalizedReports: savedReports }
-        );
-        this.logger.log(`[개인별 회의록] DB 업데이트 완료 - ${savedReports.length}개`);
-      } catch (error) {
-        this.logger.error(`[개인별 회의록] DB 업데이트 실패: ${error.message}`);
-      }
-    }
-
-    return { saved, failed };
-  }
-
-  /**
-   * 개인별 회의록 조회
-   * @param roomId 회의 ID
-   * @param participantId 참여자 ID
-   */
-  async getPersonalizedReport(
-    roomId: string,
-    participantId: string
-  ): Promise<{
-    participantId: string;
-    name: string;
-    role?: string;
-    reportUrl: string;
-    downloadUrl: string;
-    createdAt: string;
-  } | null> {
-    try {
-      const personalizedKey = `${this.uploadPrefix}${roomId}/personalized/${participantId}.json`;
-
-      const command = new GetObjectCommand({
-        Bucket: this.bucketName,
-        Key: personalizedKey,
-      });
-
-      const response = await this.s3Client.send(command);
-      const bodyContents = await response.Body.transformToString();
-      return JSON.parse(bodyContents);
-    } catch (error) {
-      this.logger.warn(
-        `[개인별 회의록] 조회 실패 - roomId: ${roomId}, participantId: ${participantId}`
-      );
-      return null;
-    }
-  }
-
   async attachReportToUser(userId: string, reportId: string) {
     const user = await this.userRepository.findOne({
       where: { userId },
@@ -900,14 +735,6 @@ export class ReportsService {
           parsed.shareScope = "CHANNEL";
         }
 
-        // personalizedReports 필드명 변환 (RAG에서 'url'로 보내지만 프론트엔드는 'reportUrl' 기대)
-        if (parsed.personalizedReports && Array.isArray(parsed.personalizedReports)) {
-          parsed.personalizedReports = parsed.personalizedReports.map((pr: any) => ({
-            ...pr,
-            reportUrl: pr.reportUrl || pr.url,  // url → reportUrl 변환
-          }));
-        }
-
         // DB에서 tags 가져와서 병합 (S3에 없는 경우 대비)
         if (!parsed.tags || parsed.tags.length === 0) {
           try {
@@ -983,10 +810,11 @@ export class ReportsService {
       roomId: dbReport.roomId,
       channelId: dbReport.channelId,
       topic: dbReport.topic,
-      description: dbReport.description || undefined,
       attendees: dbReport.attendees || [],
       tags: dbReport.tags || [],
       createdAt: dbReport.createdAt.toISOString(),
+      startedAt: dbReport.startedAt?.toISOString(),
+      endedAt: dbReport.endedAt?.toISOString(),
       shareScope: (dbReport.shareScope as "CHANNEL" | "PRIVATE") || "CHANNEL",
       uploadFileList,
       summary: undefined,
@@ -994,6 +822,22 @@ export class ReportsService {
     };
 
     return details;
+  }
+
+  /**
+   * 회의 종료 시 endedAt 업데이트
+   * @param reportId - 리포트 ID (roomId와 동일)
+   * @param endedAt - 종료 시간 (ISO 문자열 또는 Date, 없으면 현재 시간)
+   */
+  async setMeetingEndTime(reportId: string, endedAt?: string | Date): Promise<void> {
+    const endTime = endedAt ? new Date(endedAt) : new Date();
+
+    await this.reportsRepository.update(
+      { reportId },
+      { endedAt: endTime }
+    );
+
+    this.logger.log(`Meeting end time set: reportId=${reportId}, endedAt=${endTime.toISOString()}`);
   }
 
   async downloadFileFromS3(fileUrl: string): Promise<{

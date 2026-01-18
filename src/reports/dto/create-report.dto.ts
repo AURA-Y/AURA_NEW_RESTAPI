@@ -48,10 +48,6 @@ export class CreateReportDto {
   @IsNotEmpty({ message: '회의 주제 미입력' })
   topic: string;
 
-  @IsOptional()
-  @IsString()
-  description?: string;
-
   @IsArray()
   @IsString({ each: true })
   attendees: string[];
@@ -64,6 +60,10 @@ export class CreateReportDto {
   @IsOptional()
   @IsISO8601()
   createdAt?: string;
+
+  @IsOptional()
+  @IsISO8601()
+  startedAt?: string; // 회의 시작 시간
 
   @IsArray()
   @ValidateNested({ each: true })

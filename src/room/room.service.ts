@@ -41,7 +41,6 @@ export class RoomService {
     const room = this.roomRepository.create({
       roomId: data.roomId,
       roomTopic: data.roomTopic,
-      roomDescription: data.roomDescription || null,
       masterId: data.masterId,
       channelId: data.channelId,
       participantUserIds: data.participantUserIds || [],  // 빈 배열 = 전체 공개
@@ -356,7 +355,7 @@ export class RoomService {
     if (keyword && keyword.trim()) {
       const searchKeyword = `%${keyword.trim()}%`;
       queryBuilder.andWhere(
-        "(room.roomTopic ILIKE :keyword OR room.roomDescription ILIKE :keyword)",
+        "(room.roomTopic ILIKE :keyword)",
         { keyword: searchKeyword }
       );
     }
@@ -380,11 +379,10 @@ export class RoomService {
     channelId: string;
     roomId: string;
     roomTopic: string;
-    roomDescription?: string;
     masterNickName: string;
     scheduledAt?: Date;
   }): Promise<{ success: boolean; message: string }> {
-    const { channelId, roomId, roomTopic, roomDescription, masterNickName, scheduledAt } = params;
+    const { channelId, roomId, roomTopic, masterNickName, scheduledAt } = params;
 
     // 채널 조회
     const channel = await this.channelRepository.findOne({
@@ -445,13 +443,6 @@ export class RoomService {
             },
           ],
         },
-        ...(roomDescription ? [{
-          type: 'section',
-          text: {
-            type: 'mrkdwn',
-            text: `*📋 회의 설명:*\n${roomDescription}`,
-          },
-        }] : []),
         {
           type: 'divider',
         },
