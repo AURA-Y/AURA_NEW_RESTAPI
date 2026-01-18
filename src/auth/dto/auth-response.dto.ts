@@ -6,7 +6,7 @@ export class AuthResponseDto {
     userId: string;
     email: string;
     nickName: string;
-    profileImage?: string | null;
+    profileImage?: string | null; // 프로필 이미지 URL
     roomReportIdxList?: string[];
     createdAt?: Date;
     updatedAt?: Date;
