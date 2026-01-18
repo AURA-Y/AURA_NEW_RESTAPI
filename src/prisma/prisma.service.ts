@@ -12,11 +12,25 @@ export class PrismaService
 
   constructor() {
     const connectionString = process.env.DATABASE_URL;
-    const pool = new Pool({ connectionString });
+    const isSslEnabled =
+      connectionString && connectionString.includes('sslmode=require');
+
+    const poolConfig: any = {
+      connectionString,
+    };
+
+    // AWS RDS 등에서 Self-Signed Cert 사용 시 검증 무시 설정
+    if (isSslEnabled) {
+      poolConfig.ssl = {
+        rejectUnauthorized: false,
+      };
+    }
+
+    const pool = new Pool(poolConfig);
     const adapter = new PrismaPg(pool);
-    
+
     super({ adapter });
-    
+
     this.pool = pool;
   }
 
