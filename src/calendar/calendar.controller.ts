@@ -263,6 +263,7 @@ export class CalendarController {
       durationMinutes?: number;
       startHour?: number; // 업무 시작 시간 (기본: 9)
       endHour?: number;   // 업무 종료 시간 (기본: 18)
+      excludeWeekends?: boolean; // 주말 제외 (기본: true)
     },
   ) {
     const freeSlots = await this.calendarService.findCommonFreeSlots(
@@ -273,6 +274,7 @@ export class CalendarController {
         durationMinutes: body.durationMinutes,
         startHour: body.startHour,
         endHour: body.endHour,
+        excludeWeekends: body.excludeWeekends,
       },
     );
 
