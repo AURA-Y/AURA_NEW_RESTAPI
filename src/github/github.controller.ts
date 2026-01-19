@@ -12,6 +12,7 @@ import {
   BadRequestException,
 } from '@nestjs/common';
 import { GitHubService } from './github.service';
+import { ActionItemService } from './services/action-item.service';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import {
   UpdateChannelGitHubSettingsDto,
@@ -23,6 +24,12 @@ import {
   CreateGitHubIssueDto,
   CreateGitHubIssueResponseDto,
 } from './dto/create-issue.dto';
+import {
+  CreateActionItemIssuesDto,
+  CreateActionItemIssuesResponseDto,
+  ActionItemPreviewDto,
+} from './dto/action-item.dto';
+import { ActionItemIssue } from '../../generated/prisma';
 
 /**
  * GitHubController
@@ -38,7 +45,10 @@ import {
 @Controller('github')
 @UseGuards(JwtAuthGuard)
 export class GitHubController {
-  constructor(private readonly githubService: GitHubService) {}
+  constructor(
+    private readonly githubService: GitHubService,
+    private readonly actionItemService: ActionItemService,
+  ) {}
 
   // ==========================================
   // Channel GitHub 설정 API
@@ -317,5 +327,69 @@ export class GitHubController {
       repoOwner,
       repoName,
     );
+  }
+
+  // ==========================================
+  // Action Item → GitHub Issue API
+  // ==========================================
+
+  /**
+   * GET /github/rooms/:roomId/action-items
+   * 액션 아이템 미리보기 (파싱 + GitHub 매핑)
+   *
+   * Response:
+   * [
+   *   {
+   *     "assignee": "조명기",
+   *     "task": "STT 설정 진행",
+   *     "dueDate": null,
+   *     "userId": "uuid-xxx",
+   *     "githubUsername": "jomyeonggi",
+   *     "canCreateIssue": true
+   *   }
+   * ]
+   */
+  @Get('rooms/:roomId/action-items')
+  async getActionItemsPreview(
+    @Param('roomId') roomId: string,
+  ): Promise<ActionItemPreviewDto[]> {
+    return this.actionItemService.getPreview(roomId);
+  }
+
+  /**
+   * POST /github/rooms/:roomId/action-items/issues
+   * 액션 아이템 → GitHub Issues 일괄 생성
+   *
+   * Request Body:
+   * {
+   *   "excludeAssignees": ["특정담당자"],  // 선택: 제외할 담당자
+   *   "dryRun": false                       // 선택: true면 미리보기만
+   * }
+   *
+   * Response:
+   * {
+   *   "roomId": "room-xxx",
+   *   "totalItems": 2,
+   *   "created": 2,
+   *   "results": [...]
+   * }
+   */
+  @Post('rooms/:roomId/action-items/issues')
+  async createActionItemIssues(
+    @Param('roomId') roomId: string,
+    @Body() dto: CreateActionItemIssuesDto,
+  ): Promise<CreateActionItemIssuesResponseDto> {
+    return this.actionItemService.createIssuesFromReport(roomId, dto);
+  }
+
+  /**
+   * GET /github/rooms/:roomId/action-items/issues
+   * 생성된 액션 아이템 Issue 목록 조회
+   */
+  @Get('rooms/:roomId/action-items/issues')
+  async getActionItemIssues(
+    @Param('roomId') roomId: string,
+  ): Promise<ActionItemIssue[]> {
+    return this.actionItemService.getCreatedIssues(roomId);
   }
 }

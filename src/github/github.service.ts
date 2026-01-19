@@ -149,6 +149,7 @@ export class GitHubService {
    * @param title - Issue 제목
    * @param body - Issue 본문 (Markdown)
    * @param labels - 라벨 (선택, 없으면 config.labels 사용)
+   * @param assignees - 담당자 GitHub username 배열 (선택)
    * @returns Issue 번호와 URL
    *
    * Flow:
@@ -161,6 +162,7 @@ export class GitHubService {
     title: string,
     body: string,
     labels?: string[],
+    assignees?: string[],
   ): Promise<GitHubIssueResult> {
     const octokit = await this.githubAppService.getInstallationOctokit(
       config.installationId,
@@ -171,8 +173,9 @@ export class GitHubService {
     const issueLabels = labels ?? config.labels;
 
     const appInfo = config.appId ? ` (App ID: ${config.appId})` : '';
+    const assigneeInfo = assignees?.length ? ` (assignees: ${assignees.join(', ')})` : '';
     this.logger.log(
-      `Creating issue in ${config.owner}/${config.repo}: "${title}"${appInfo}`,
+      `Creating issue in ${config.owner}/${config.repo}: "${title}"${appInfo}${assigneeInfo}`,
     );
 
     const response = await octokit.rest.issues.create({
@@ -181,6 +184,7 @@ export class GitHubService {
       title,
       body,
       labels: issueLabels.length > 0 ? issueLabels : undefined,
+      assignees: assignees?.length ? assignees : undefined,
     });
 
     this.logger.log(

@@ -2,6 +2,7 @@ import {
   Controller,
   Post,
   Get,
+  Put,
   Patch,
   Delete,
   Body,
@@ -20,6 +21,7 @@ import { RegisterDto } from './dto/register.dto';
 import { LoginDto } from './dto/login.dto';
 import { UpdateProfileDto } from './dto/update-profile.dto';
 import { AuthResponseDto } from './dto/auth-response.dto';
+import { LinkGitHubDto, GitHubStatusResponseDto } from './dto/github-link.dto';
 import { JwtAuthGuard } from './guards/jwt-auth.guard';
 
 @Controller('auth')
@@ -140,5 +142,72 @@ export class AuthController {
     @Request() req: { user: { userId: string } },
   ): Promise<{ connected: boolean }> {
     return this.authService.checkGoogleConnection(req.user.userId);
+  }
+
+  // ==================== GitHub 계정 연동 ====================
+
+  /**
+   * GitHub 연동 상태 조회
+   * GET /auth/github/status
+   *
+   * Response:
+   * {
+   *   "isConnected": true,
+   *   "githubUsername": "jomyeonggi",
+   *   "linkedAt": "2024-01-15T09:30:00.000Z"
+   * }
+   */
+  @Get('github/status')
+  @UseGuards(JwtAuthGuard)
+  @HttpCode(HttpStatus.OK)
+  async getGitHubStatus(
+    @Request() req: { user: { userId: string } },
+  ): Promise<GitHubStatusResponseDto> {
+    const status = await this.authService.getGitHubStatus(req.user.userId);
+    return new GitHubStatusResponseDto(status);
+  }
+
+  /**
+   * GitHub 계정 연동
+   * PUT /auth/github/link
+   *
+   * Request Body:
+   * {
+   *   "githubUsername": "jomyeonggi"
+   * }
+   *
+   * Response:
+   * {
+   *   "success": true,
+   *   "message": "GitHub 계정 @jomyeonggi이(가) 연동되었습니다."
+   * }
+   */
+  @Put('github/link')
+  @UseGuards(JwtAuthGuard)
+  @HttpCode(HttpStatus.OK)
+  async linkGitHub(
+    @Request() req: { user: { userId: string } },
+    @Body(ValidationPipe) dto: LinkGitHubDto,
+  ): Promise<{ success: boolean; message: string }> {
+    return this.authService.linkGitHub(req.user.userId, dto.githubUsername);
+  }
+
+  /**
+   * GitHub 연동 해제
+   * DELETE /auth/github/unlink
+   *
+   * Response:
+   * {
+   *   "success": true,
+   *   "message": "GitHub 연동이 해제되었습니다."
+   * }
+   */
+  @Delete('github/unlink')
+  @UseGuards(JwtAuthGuard)
+  @HttpCode(HttpStatus.OK)
+  async unlinkGitHub(
+    @Request() req: { user: { userId: string } },
+  ): Promise<{ success: boolean; message: string }> {
+    return this.authService.unlinkGitHub(req.user.userId);
   }
 }
