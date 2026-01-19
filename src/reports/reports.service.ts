@@ -18,7 +18,6 @@ import {
   UploadPartCommand,
   CompleteMultipartUploadCommand,
   AbortMultipartUploadCommand,
-  DeleteObjectCommand,
   ListObjectsV2Command,
   DeleteObjectsCommand,
 } from "@aws-sdk/client-s3";
@@ -120,7 +119,7 @@ export class ReportsService {
   }
 
   private async getAccessibleReportIds(
-    userId: string,
+    _userId: string,
     nickName: string
   ): Promise<string[]> {
     // RoomReport에서 직접 조회 (attendees에 포함된 경우)
@@ -314,7 +313,7 @@ export class ReportsService {
     return sortedReports.map(report => ({
       ...report,
       hostName: report.masterId ? hostMap.get(report.masterId) : undefined
-    }));
+    })) as (RoomReport & { hostName?: string })[];
   }
 
   async create(reportData: Partial<RoomReport>): Promise<RoomReport> {
@@ -372,7 +371,7 @@ export class ReportsService {
   async startMultipartUpload(
     fileName: string,
     fileType: string,
-    userId: string,
+    _userId: string,
     reportId?: string
   ) {
     const fileId = randomUUID();
