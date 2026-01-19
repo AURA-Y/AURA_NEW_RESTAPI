@@ -198,6 +198,58 @@ export class CalendarController {
   }
 
   /**
+   * 사용자 개인 캘린더 일정 수정
+   * PATCH /calendar/user/events/:eventId
+   */
+  @Patch('user/events/:eventId')
+  @UseGuards(JwtAuthGuard)
+  async updateUserEvent(
+    @Req() req: AuthenticatedRequest,
+    @Param('eventId') eventId: string,
+    @Body() dto: {
+      title?: string;
+      date?: string;
+      time?: string;
+      description?: string;
+      durationMinutes?: number;
+    },
+  ) {
+    const userId = req.user.userId;
+    const event = await this.calendarService.updateUserEvent(userId, eventId, dto);
+
+    return {
+      status: 'ok',
+      message: '개인 캘린더 일정이 수정되었습니다.',
+      event: {
+        id: event.id,
+        title: event.summary,
+        start: event.start,
+        end: event.end,
+        link: event.htmlLink,
+      },
+    };
+  }
+
+  /**
+   * 사용자 개인 캘린더 일정 삭제
+   * DELETE /calendar/user/events/:eventId
+   */
+  @Delete('user/events/:eventId')
+  @UseGuards(JwtAuthGuard)
+  async deleteUserEvent(
+    @Req() req: AuthenticatedRequest,
+    @Param('eventId') eventId: string,
+  ) {
+    const userId = req.user.userId;
+    await this.calendarService.deleteUserEvent(userId, eventId);
+
+    return {
+      status: 'ok',
+      message: '개인 캘린더 일정이 삭제되었습니다.',
+    };
+  }
+
+  /**
    * Room 참여자들의 개인 캘린더에 일정 추가
    * POST /calendar/room/:roomId/events
    */

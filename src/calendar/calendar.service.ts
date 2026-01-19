@@ -412,6 +412,26 @@ export class CalendarService implements OnModuleInit {
   }
 
   /**
+   * 사용자의 개인 캘린더 일정 삭제 (OAuth)
+   */
+  async deleteUserEvent(
+    userId: string,
+    eventId: string,
+    calendarId: string = 'primary',
+  ): Promise<void> {
+    const oauth2Client = await this.getUserOAuth2Client(userId);
+    const calendar = google.calendar({ version: 'v3', auth: oauth2Client });
+
+    await calendar.events.delete({
+      calendarId,
+      eventId,
+      sendUpdates: 'all', // 참석자에게 삭제 알림 전송
+    });
+
+    this.logger.log(`[개인캘린더] 일정 삭제: ${eventId} for user ${userId}`);
+  }
+
+  /**
    * 여러 사용자의 개인 캘린더에 동시에 일정 추가 + 공용 캘린더에도 추가
    */
   async addEventToMultipleUsers(
