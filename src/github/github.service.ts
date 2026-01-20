@@ -403,11 +403,7 @@ export class GitHubService {
       repoName: channel.githubRepoName ?? undefined,
       labels: channel.githubIssueLabels,
       autoCreate: channel.githubAutoCreate,
-<<<<<<< HEAD
       projectId: channel.githubProjectId ?? null,
-=======
-      projectId: channel.githubProjectId,
->>>>>>> 26222f2c08416ded3f62413d2509e6e3a7db4822
       autoAddToProject: channel.githubAutoAddToProject,
     };
   }

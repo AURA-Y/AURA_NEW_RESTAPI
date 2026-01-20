@@ -58,19 +58,11 @@ export class UpdateChannelGitHubSettingsDto {
 
   @IsString()
   @IsOptional()
-<<<<<<< HEAD
-  projectId?: string | null; // GitHub Project ID (GraphQL node_id)
-
-  @IsBoolean()
-  @IsOptional()
-  autoAddToProject?: boolean;
-=======
-  projectId?: string; // GitHub Projects v2 node ID (선택)
+  projectId?: string | null; // GitHub Projects v2 node ID (선택)
 
   @IsBoolean()
   @IsOptional()
   autoAddToProject?: boolean; // Issue 생성 시 자동으로 Project에 추가
->>>>>>> 26222f2c08416ded3f62413d2509e6e3a7db4822
 }
 
 /**
@@ -105,11 +97,7 @@ export class ChannelGitHubSettingsResponseDto {
   repoName?: string;
   labels?: string[];
   autoCreate?: boolean;
-<<<<<<< HEAD
-  projectId?: string | null; // GitHub Project ID
-  autoAddToProject?: boolean;
-=======
-  projectId?: string; // GitHub Projects v2 node ID
+  projectId?: string | null; // GitHub Projects v2 node ID
   projectTitle?: string; // 프로젝트 제목 (조회용)
   projectUrl?: string; // 프로젝트 URL (조회용)
   autoAddToProject?: boolean; // Issue 생성 시 자동으로 Project에 추가
@@ -148,7 +136,6 @@ export class CreateProjectDto {
   @IsString()
   @MaxLength(100)
   title: string;
->>>>>>> 26222f2c08416ded3f62413d2509e6e3a7db4822
 }
 
 /**

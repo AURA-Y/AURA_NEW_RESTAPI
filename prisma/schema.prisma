@@ -8,9 +8,8 @@ datasource db {
   provider = "postgresql"
 }
 
-<<<<<<< HEAD
 model User {
-  userId             String          @id @default(uuid()) @db.Uuid
+  userId             String          @id @db.Uuid
   email              String          @unique(map: "UQ_4a257d2c9837248d70640b3e36e") @db.VarChar(255)
   userPassword       String          @db.VarChar(255)
   nickName           String          @unique(map: "UQ_949dca0566481700b137756b7b6") @db.VarChar(100)
@@ -18,46 +17,21 @@ model User {
   googleRefreshToken String?
   googleTokenExpiry  DateTime?       @db.Timestamptz(6)
   createdAt          DateTime        @default(now()) @db.Timestamptz(6)
-  updatedAt          DateTime        @default(now()) @updatedAt @db.Timestamptz(6)
+  updatedAt          DateTime        @default(now()) @db.Timestamptz(6)
   profileImage       String?
   githubId           Int?
   githubLinkedAt     DateTime?       @db.Timestamptz(6)
   githubUsername     String?         @db.VarChar(39)
-  ownedChannels      Channel[]       @relation("ChannelOwner")
-  memberships        ChannelMember[]
-  joinRequests       JoinRequest[]
-  createdRooms       Room[]          @relation("RoomMaster")
+  Channel            Channel[]
+  ChannelMember      ChannelMember[]
+  JoinRequest        JoinRequest[]
+  Room               Room[]
 
   @@index([githubUsername])
 }
 
 model Channel {
-  channelId              String          @id @default(uuid()) @db.Uuid
-=======
-model ActionItemIssue {
-  id               String               @id @db.Uuid
-  reportId         String               @db.VarChar(255)
-  roomId           String               @db.VarChar(255)
-  assigneeNickName String               @db.VarChar(100)
-  assigneeUserId   String?              @db.Uuid
-  githubUsername   String?              @db.VarChar(39)
-  task             String
-  dueDate          String?
-  issueNumber      Int?
-  issueUrl         String?
-  issueState       ActionItemIssueState @default(PENDING)
-  createdAt        DateTime             @default(now()) @db.Timestamptz(6)
-  updatedAt        DateTime             @default(now()) @db.Timestamptz(6)
-
-  @@unique([reportId, task])
-  @@index([assigneeUserId])
-  @@index([reportId])
-  @@index([roomId])
-}
-
-model Channel {
   channelId              String          @id @db.Uuid
->>>>>>> 26222f2c08416ded3f62413d2509e6e3a7db4822
   channelName            String          @db.VarChar(100)
   slackWebhookUrl        String?
   ownerId                String          @db.Uuid
@@ -71,21 +45,12 @@ model Channel {
   githubPrivateKey       String?
   githubAutoAddToProject Boolean         @default(false)
   githubProjectId        String?
-<<<<<<< HEAD
-  owner                  User            @relation("ChannelOwner", fields: [ownerId], references: [userId], onDelete: Cascade, onUpdate: NoAction, map: "FK_79ff036dd0e6747303835b0b3b9")
-  members                ChannelMember[]
-  joinRequests           JoinRequest[]
-  rooms                  Room[]
-  reports                RoomReport[]
-  teams                  Team[]
-=======
   User                   User            @relation(fields: [ownerId], references: [userId], onDelete: Cascade, onUpdate: NoAction, map: "FK_79ff036dd0e6747303835b0b3b9")
   ChannelMember          ChannelMember[]
   JoinRequest            JoinRequest[]
   Room                   Room[]
   RoomReport             RoomReport[]
   Team                   Team[]
->>>>>>> 26222f2c08416ded3f62413d2509e6e3a7db4822
 }
 
 model ChannelMember {
@@ -101,59 +66,6 @@ model ChannelMember {
   @@id([userId, channelId])
 }
 
-<<<<<<< HEAD
-model Team {
-  teamId    String          @id @default(uuid()) @db.Uuid
-  teamName  String          @db.VarChar(100)
-  createdAt DateTime        @db.Timestamptz(6)
-  channelId String          @db.Uuid
-  members   ChannelMember[]
-  channel   Channel         @relation(fields: [channelId], references: [channelId], onDelete: Cascade, onUpdate: NoAction, map: "FK_89f8ebfc63ee1f17e6fad07726a")
-}
-
-model Room {
-  roomId               String   @id @db.VarChar(255)
-  roomTopic            String   @db.VarChar(255)
-  roomPassword         String?  @db.VarChar(50)
-  masterId             String   @db.Uuid
-  channelId            String   @db.Uuid
-  attendees            String[] @default([])
-  token                String?
-  tags                 String[] @default([])
-  participantUserIds   String[] @default([]) @db.Uuid
-  roomShareLink        String   @unique(map: "UQ_9afb32bb37027f2d69429d50876") @default(dbgenerated("gen_random_uuid()")) @db.VarChar(255)
-  createdAt            DateTime @default(now()) @db.Timestamptz(6)
-  uploadFileList       Json     @default("[]")
-  githubRepoOverride   String?  @db.VarChar(201)
-  githubLabelsOverride String[] @default([])
-  referencedFiles      String?
-  expectedAttendees    Json?    @default("[]")
-  master               User     @relation("RoomMaster", fields: [masterId], references: [userId], onDelete: Cascade, onUpdate: NoAction, map: "FK_56edc8746a89b70d50816f6aaf3")
-  channel              Channel  @relation(fields: [channelId], references: [channelId], onDelete: Cascade, onUpdate: NoAction, map: "FK_c3fb69a467978452fb2160f9dfa")
-}
-
-model RoomReport {
-  reportId           String                     @id @db.VarChar(255)
-  topic              String                     @db.VarChar(255)
-  attendees          String[]                   @default([])
-  shareScope         RoomReport_sharescope_enum @default(CHANNEL)
-  specialAuth        String[]                   @default([]) @db.Uuid
-  roomId             String                     @unique(map: "UQ_0e72b6c8cd1c2b3bf4f7340b9ea") @db.VarChar(255)
-  channelId          String                     @db.Uuid
-  tags               String[]                   @default([])
-  participantUserIds String[]                   @default([]) @db.Uuid
-  masterId           String?                    @db.Uuid
-  createdAt          DateTime                   @default(now()) @db.Timestamptz(6)
-  endedAt            DateTime?                  @db.Timestamptz(6)
-  expectedAttendees  Json?                      @default("[]")
-  referencedFiles    Json?                      @default("[]")
-  startedAt          DateTime?                  @db.Timestamptz(6)
-  uploadFileList     Json?                      @default("[]")
-  channel            Channel                    @relation(fields: [channelId], references: [channelId], onDelete: Cascade, onUpdate: NoAction, map: "FK_be4070416b4b332fc4c36a1dae7")
-}
-
-=======
->>>>>>> 26222f2c08416ded3f62413d2509e6e3a7db4822
 model JoinRequest {
   id          String                  @id @db.Uuid
   userId      String                  @db.Uuid
@@ -216,35 +128,6 @@ model Team {
   Channel       Channel         @relation(fields: [channelId], references: [channelId], onDelete: Cascade, onUpdate: NoAction, map: "FK_89f8ebfc63ee1f17e6fad07726a")
 }
 
-model User {
-  userId             String          @id @db.Uuid
-  email              String          @unique(map: "UQ_4a257d2c9837248d70640b3e36e") @db.VarChar(255)
-  userPassword       String          @db.VarChar(255)
-  nickName           String          @unique(map: "UQ_949dca0566481700b137756b7b6") @db.VarChar(100)
-  googleAccessToken  String?
-  googleRefreshToken String?
-  googleTokenExpiry  DateTime?       @db.Timestamptz(6)
-  createdAt          DateTime        @default(now()) @db.Timestamptz(6)
-  updatedAt          DateTime        @default(now()) @db.Timestamptz(6)
-  profileImage       String?
-  githubId           Int?
-  githubLinkedAt     DateTime?       @db.Timestamptz(6)
-  githubUsername     String?         @db.VarChar(39)
-  Channel            Channel[]
-  ChannelMember      ChannelMember[]
-  JoinRequest        JoinRequest[]
-  Room               Room[]
-
-  @@index([githubUsername])
-}
-
-enum ActionItemIssueState {
-  PENDING
-  CREATED
-  FAILED
-  SKIPPED
-}
-
 model ActionItemIssue {
   id               String               @id @db.Uuid
   reportId         String               @db.VarChar(255)
@@ -266,6 +149,13 @@ model ActionItemIssue {
   @@index([roomId])
 }
 
+enum ActionItemIssueState {
+  PENDING
+  CREATED
+  FAILED
+  SKIPPED
+}
+
 enum ChannelMember_role_enum {
   OWNER
   ADMIN
@@ -283,11 +173,4 @@ enum RoomReport_sharescope_enum {
   TEAM
   CHANNEL
   PRIVATE
-}
-
-enum ActionItemIssueState {
-  PENDING
-  CREATED
-  FAILED
-  SKIPPED
 }
