@@ -7,6 +7,7 @@ export class AuthResponseDto {
     email: string;
     nickName: string;
     profileImage?: string | null; // 프로필 이미지 URL
+    githubUsername?: string | null; // GitHub 사용자명
     roomReportIdxList?: string[];
     createdAt?: Date;
     updatedAt?: Date;
@@ -21,6 +22,7 @@ export class AuthResponseDto {
       email: string;
       nickName: string;
       profileImage?: string | null;
+      githubUsername?: string | null;
       roomReportIdxList?: string[];
       createdAt?: Date;
       updatedAt?: Date;

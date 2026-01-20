@@ -208,7 +208,7 @@ export class AuthService {
    */
   async updateProfile(
     userId: string,
-    updateData: { nickName?: string; currentPassword?: string; newPassword?: string; profileImage?: string },
+    updateData: { nickName?: string; currentPassword?: string; newPassword?: string; profileImage?: string; githubUsername?: string },
   ): Promise<AuthResponseDto> {
     const user = await this.userRepository.findOne({
       where: { userId },
@@ -218,6 +218,7 @@ export class AuthService {
         nickName: true,
         userPassword: true,
         profileImage: true,
+        githubUsername: true,
         createdAt: true,
         updatedAt: true,
       },
@@ -263,6 +264,11 @@ export class AuthService {
       user.profileImage = updateData.profileImage || null;
     }
 
+    // GitHub 사용자명 변경
+    if (updateData.githubUsername !== undefined) {
+      user.githubUsername = updateData.githubUsername || null;
+    }
+
     await this.userRepository.save(user);
 
     this.logger.log(`User profile updated: ${user.email} (${user.nickName})`);
@@ -276,6 +282,7 @@ export class AuthService {
       email: user.email,
       nickName: user.nickName,
       profileImage: user.profileImage,
+      githubUsername: user.githubUsername,
       createdAt: user.createdAt,
       updatedAt: user.updatedAt,
     });
