@@ -265,9 +265,6 @@ export class GitHubProjectsService {
     owner: string,
     repo: string,
   ): Promise<boolean> {
-    this.logger.log(
-      `addIssueToProject called: channelId=${channelId}, projectId=${projectId}, issue=#${issueNumber}, repo=${owner}/${repo}`,
-    );
 
     const channel = await this.prisma.channel.findUnique({
       where: { channelId },
@@ -310,13 +307,11 @@ export class GitHubProjectsService {
     `;
 
     try {
-      this.logger.log(`Fetching issue node ID for #${issueNumber}...`);
       const issueResponse = await octokit.graphql<{
         repository: { issue: { id: string } };
       }>(issueQuery, { owner, repo, number: issueNumber });
 
       const issueNodeId = issueResponse.repository.issue.id;
-      this.logger.log(`Issue node ID: ${issueNodeId}`);
 
       // 프로젝트에 추가
       const addMutation = `
@@ -329,19 +324,13 @@ export class GitHubProjectsService {
         }
       `;
 
-      this.logger.log(
-        `Executing addProjectV2ItemById mutation: projectId=${projectId}, contentId=${issueNodeId}`,
-      );
-      const mutationResult = await octokit.graphql(addMutation, {
+      await octokit.graphql(addMutation, {
         projectId,
         contentId: issueNodeId,
       });
 
       this.logger.log(
-        `addProjectV2ItemById result: ${JSON.stringify(mutationResult)}`,
-      );
-      this.logger.log(
-        `Successfully added issue #${issueNumber} to project ${projectId}`,
+        `Added issue #${issueNumber} to project`,
       );
       return true;
     } catch (error) {

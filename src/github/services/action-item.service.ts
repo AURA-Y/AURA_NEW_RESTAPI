@@ -132,11 +132,6 @@ export class ActionItemService {
     // Project 설정 조회
     const projectConfig = await this.getProjectConfig(channelId);
 
-    // Debug: Project 설정 확인
-    this.logger.log(
-      `Project config for channel ${channelId}: ${JSON.stringify(projectConfig)}`,
-    );
-
     const results: IssueCreationResult[] = [];
 
     for (const item of items) {
@@ -232,33 +227,20 @@ export class ActionItemService {
       }
 
       // Project에 Issue 추가 (설정된 경우)
-      this.logger.log(
-        `Checking project config: projectId=${projectConfig?.projectId}, autoAdd=${projectConfig?.autoAddToProject}`,
-      );
       if (projectConfig?.projectId && projectConfig.autoAddToProject) {
-        this.logger.log(
-          `Adding issue #${issueResult.issueNumber} to project ${projectConfig.projectId}`,
-        );
         try {
-          const addResult = await this.githubProjectsService.addIssueToProject(
+          await this.githubProjectsService.addIssueToProject(
             channelId,
             projectConfig.projectId,
             issueResult.issueNumber,
             config!.owner,
             config!.repo,
           );
-          this.logger.log(
-            `addIssueToProject result: ${addResult}`,
-          );
         } catch (error) {
           this.logger.warn(
             `Failed to add issue #${issueResult.issueNumber} to project: ${error.message}`,
           );
         }
-      } else {
-        this.logger.log(
-          `Skipping project addition: projectId=${projectConfig?.projectId}, autoAdd=${projectConfig?.autoAddToProject}`,
-        );
       }
 
       // DB에 기록
