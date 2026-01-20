@@ -8,6 +8,7 @@ datasource db {
   provider = "postgresql"
 }
 
+<<<<<<< HEAD
 model User {
   userId             String          @id @default(uuid()) @db.Uuid
   email              String          @unique(map: "UQ_4a257d2c9837248d70640b3e36e") @db.VarChar(255)
@@ -32,6 +33,31 @@ model User {
 
 model Channel {
   channelId              String          @id @default(uuid()) @db.Uuid
+=======
+model ActionItemIssue {
+  id               String               @id @db.Uuid
+  reportId         String               @db.VarChar(255)
+  roomId           String               @db.VarChar(255)
+  assigneeNickName String               @db.VarChar(100)
+  assigneeUserId   String?              @db.Uuid
+  githubUsername   String?              @db.VarChar(39)
+  task             String
+  dueDate          String?
+  issueNumber      Int?
+  issueUrl         String?
+  issueState       ActionItemIssueState @default(PENDING)
+  createdAt        DateTime             @default(now()) @db.Timestamptz(6)
+  updatedAt        DateTime             @default(now()) @db.Timestamptz(6)
+
+  @@unique([reportId, task])
+  @@index([assigneeUserId])
+  @@index([reportId])
+  @@index([roomId])
+}
+
+model Channel {
+  channelId              String          @id @db.Uuid
+>>>>>>> 26222f2c08416ded3f62413d2509e6e3a7db4822
   channelName            String          @db.VarChar(100)
   slackWebhookUrl        String?
   ownerId                String          @db.Uuid
@@ -45,12 +71,21 @@ model Channel {
   githubPrivateKey       String?
   githubAutoAddToProject Boolean         @default(false)
   githubProjectId        String?
+<<<<<<< HEAD
   owner                  User            @relation("ChannelOwner", fields: [ownerId], references: [userId], onDelete: Cascade, onUpdate: NoAction, map: "FK_79ff036dd0e6747303835b0b3b9")
   members                ChannelMember[]
   joinRequests           JoinRequest[]
   rooms                  Room[]
   reports                RoomReport[]
   teams                  Team[]
+=======
+  User                   User            @relation(fields: [ownerId], references: [userId], onDelete: Cascade, onUpdate: NoAction, map: "FK_79ff036dd0e6747303835b0b3b9")
+  ChannelMember          ChannelMember[]
+  JoinRequest            JoinRequest[]
+  Room                   Room[]
+  RoomReport             RoomReport[]
+  Team                   Team[]
+>>>>>>> 26222f2c08416ded3f62413d2509e6e3a7db4822
 }
 
 model ChannelMember {
@@ -59,13 +94,14 @@ model ChannelMember {
   teamId    String?                 @db.Uuid
   role      ChannelMember_role_enum @default(MEMBER)
   joinedAt  DateTime                @default(now()) @db.Timestamptz(6)
-  channel   Channel                 @relation(fields: [channelId], references: [channelId], onDelete: Cascade, onUpdate: NoAction, map: "FK_10c976f3ff0bbea10b695793452")
-  team      Team?                   @relation(fields: [teamId], references: [teamId], onUpdate: NoAction, map: "FK_2d2b775472172d0a404746cb4a5")
-  user      User                    @relation(fields: [userId], references: [userId], onDelete: Cascade, onUpdate: NoAction, map: "FK_ef59c13cf97b76aac16a9b629fe")
+  Channel   Channel                 @relation(fields: [channelId], references: [channelId], onDelete: Cascade, onUpdate: NoAction, map: "FK_10c976f3ff0bbea10b695793452")
+  Team      Team?                   @relation(fields: [teamId], references: [teamId], onUpdate: NoAction, map: "FK_2d2b775472172d0a404746cb4a5")
+  User      User                    @relation(fields: [userId], references: [userId], onDelete: Cascade, onUpdate: NoAction, map: "FK_ef59c13cf97b76aac16a9b629fe")
 
   @@id([userId, channelId])
 }
 
+<<<<<<< HEAD
 model Team {
   teamId    String          @id @default(uuid()) @db.Uuid
   teamName  String          @db.VarChar(100)
@@ -116,16 +152,97 @@ model RoomReport {
   channel            Channel                    @relation(fields: [channelId], references: [channelId], onDelete: Cascade, onUpdate: NoAction, map: "FK_be4070416b4b332fc4c36a1dae7")
 }
 
+=======
+>>>>>>> 26222f2c08416ded3f62413d2509e6e3a7db4822
 model JoinRequest {
-  id          String                  @id @default(uuid()) @db.Uuid
+  id          String                  @id @db.Uuid
   userId      String                  @db.Uuid
   channelId   String                  @db.Uuid
   status      JoinRequest_status_enum @default(PENDING)
   createdAt   DateTime                @default(now()) @db.Timestamptz(6)
   processedAt DateTime?               @db.Timestamptz(6)
   expiresAt   DateTime?               @db.Timestamptz(6)
-  user        User                    @relation(fields: [userId], references: [userId], onDelete: Cascade, onUpdate: NoAction, map: "FK_6df814fc490837105048e50429f")
-  channel     Channel                 @relation(fields: [channelId], references: [channelId], onDelete: Cascade, onUpdate: NoAction, map: "FK_eade68e793cabddf62d9f8f36c4")
+  User        User                    @relation(fields: [userId], references: [userId], onDelete: Cascade, onUpdate: NoAction, map: "FK_6df814fc490837105048e50429f")
+  Channel     Channel                 @relation(fields: [channelId], references: [channelId], onDelete: Cascade, onUpdate: NoAction, map: "FK_eade68e793cabddf62d9f8f36c4")
+}
+
+model Room {
+  roomId               String   @id @db.VarChar(255)
+  roomTopic            String   @db.VarChar(255)
+  roomPassword         String?  @db.VarChar(50)
+  masterId             String   @db.Uuid
+  channelId            String   @db.Uuid
+  attendees            String[] @default([])
+  token                String?
+  tags                 String[] @default([])
+  participantUserIds   String[] @default([]) @db.Uuid
+  roomShareLink        String   @unique(map: "UQ_9afb32bb37027f2d69429d50876") @default(dbgenerated("gen_random_uuid()")) @db.VarChar(255)
+  createdAt            DateTime @default(now()) @db.Timestamptz(6)
+  uploadFileList       Json     @default("[]")
+  githubRepoOverride   String?  @db.VarChar(201)
+  githubLabelsOverride String[] @default([])
+  referencedFiles      String?
+  expectedAttendees    Json?    @default("[]")
+  User                 User     @relation(fields: [masterId], references: [userId], onDelete: Cascade, onUpdate: NoAction, map: "FK_56edc8746a89b70d50816f6aaf3")
+  Channel              Channel  @relation(fields: [channelId], references: [channelId], onDelete: Cascade, onUpdate: NoAction, map: "FK_c3fb69a467978452fb2160f9dfa")
+}
+
+model RoomReport {
+  reportId           String                     @id @db.VarChar(255)
+  topic              String                     @db.VarChar(255)
+  attendees          String[]                   @default([])
+  shareScope         RoomReport_sharescope_enum @default(CHANNEL)
+  specialAuth        String[]                   @default([]) @db.Uuid
+  roomId             String                     @unique(map: "UQ_0e72b6c8cd1c2b3bf4f7340b9ea") @db.VarChar(255)
+  channelId          String                     @db.Uuid
+  tags               String[]                   @default([])
+  participantUserIds String[]                   @default([]) @db.Uuid
+  masterId           String?                    @db.Uuid
+  createdAt          DateTime                   @default(now()) @db.Timestamptz(6)
+  endedAt            DateTime?                  @db.Timestamptz(6)
+  expectedAttendees  Json?                      @default("[]")
+  referencedFiles    Json?                      @default("[]")
+  startedAt          DateTime?                  @db.Timestamptz(6)
+  uploadFileList     Json?                      @default("[]")
+  Channel            Channel                    @relation(fields: [channelId], references: [channelId], onDelete: Cascade, onUpdate: NoAction, map: "FK_be4070416b4b332fc4c36a1dae7")
+}
+
+model Team {
+  teamId        String          @id @db.Uuid
+  teamName      String          @db.VarChar(100)
+  createdAt     DateTime        @db.Timestamptz(6)
+  channelId     String          @db.Uuid
+  ChannelMember ChannelMember[]
+  Channel       Channel         @relation(fields: [channelId], references: [channelId], onDelete: Cascade, onUpdate: NoAction, map: "FK_89f8ebfc63ee1f17e6fad07726a")
+}
+
+model User {
+  userId             String          @id @db.Uuid
+  email              String          @unique(map: "UQ_4a257d2c9837248d70640b3e36e") @db.VarChar(255)
+  userPassword       String          @db.VarChar(255)
+  nickName           String          @unique(map: "UQ_949dca0566481700b137756b7b6") @db.VarChar(100)
+  googleAccessToken  String?
+  googleRefreshToken String?
+  googleTokenExpiry  DateTime?       @db.Timestamptz(6)
+  createdAt          DateTime        @default(now()) @db.Timestamptz(6)
+  updatedAt          DateTime        @default(now()) @db.Timestamptz(6)
+  profileImage       String?
+  githubId           Int?
+  githubLinkedAt     DateTime?       @db.Timestamptz(6)
+  githubUsername     String?         @db.VarChar(39)
+  Channel            Channel[]
+  ChannelMember      ChannelMember[]
+  JoinRequest        JoinRequest[]
+  Room               Room[]
+
+  @@index([githubUsername])
+}
+
+enum ActionItemIssueState {
+  PENDING
+  CREATED
+  FAILED
+  SKIPPED
 }
 
 model ActionItemIssue {

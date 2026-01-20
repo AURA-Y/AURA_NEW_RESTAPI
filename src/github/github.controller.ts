@@ -12,6 +12,8 @@ import {
   BadRequestException,
 } from '@nestjs/common';
 import { GitHubService } from './github.service';
+import { GitHubProjectsService } from './github-projects.service';
+import { ActionItemService } from './services/action-item.service';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import {
   UpdateChannelGitHubSettingsDto,
@@ -38,7 +40,11 @@ import {
 @Controller('github')
 @UseGuards(JwtAuthGuard)
 export class GitHubController {
-  constructor(private readonly githubService: GitHubService) {}
+  constructor(
+    private readonly githubService: GitHubService,
+    private readonly githubProjectsService: GitHubProjectsService,
+    private readonly actionItemService: ActionItemService,
+  ) {}
 
   // ==========================================
   // Channel GitHub 설정 API
@@ -252,6 +258,221 @@ export class GitHubController {
       issueUrl: result.issueUrl,
       repository: result.repository,
     };
+  }
+
+  // ==========================================
+  // Action Items API
+  // ==========================================
+
+  /**
+   * GET /github/rooms/:roomId/action-items
+   * 액션 아이템 미리보기
+   *
+   * Query Parameter:
+   * - markdown: 회의록 마크다운 내용 (URL encoded)
+   */
+  @Post('rooms/:roomId/action-items/preview')
+  @HttpCode(HttpStatus.OK)
+  async getActionItemsPreview(
+    @Param('roomId') roomId: string,
+    @Body() body: { markdown: string },
+  ): Promise<{
+    items: Array<{
+      assignee: string;
+      task: string;
+      dueDate: string | null;
+      existingIssue?: { issueNumber: number; issueUrl: string };
+    }>;
+  }> {
+    const { items, existingIssues } =
+      await this.actionItemService.getActionItemsPreview(roomId, body.markdown);
+
+    return {
+      items: items.map((item) => ({
+        ...item,
+        existingIssue: existingIssues.get(item.task),
+      })),
+    };
+  }
+
+  /**
+   * POST /github/rooms/:roomId/action-items/issues
+   * 액션 아이템에서 GitHub Issues 일괄 생성
+   */
+  @Post('rooms/:roomId/action-items/issues')
+  async createIssuesFromActionItems(
+    @Param('roomId') roomId: string,
+    @Body()
+    body: {
+      reportId: string;
+      markdown: string;
+      channelId: string;
+    },
+  ): Promise<{
+    total: number;
+    created: number;
+    failed: number;
+    skipped: number;
+    results: Array<{
+      task: string;
+      assignee: string;
+      status: 'CREATED' | 'FAILED' | 'SKIPPED';
+      issueNumber?: number;
+      issueUrl?: string;
+      error?: string;
+    }>;
+  }> {
+    if (!body.reportId || !body.markdown || !body.channelId) {
+      throw new BadRequestException(
+        'reportId, markdown, and channelId are required',
+      );
+    }
+
+    const result = await this.actionItemService.createIssuesFromActionItems(
+      roomId,
+      body.reportId,
+      body.markdown,
+      body.channelId,
+    );
+
+    return {
+      total: result.total,
+      created: result.created,
+      failed: result.failed,
+      skipped: result.skipped,
+      results: result.results.map((r) => ({
+        task: r.actionItem.task,
+        assignee: r.actionItem.assignee,
+        status: r.status,
+        issueNumber: r.issueNumber,
+        issueUrl: r.issueUrl,
+        error: r.error,
+      })),
+    };
+  }
+
+  /**
+   * GET /github/rooms/:roomId/action-items/issues
+   * 생성된 Issue 목록 조회
+   */
+  @Get('rooms/:roomId/action-items/issues')
+  async getCreatedIssues(
+    @Param('roomId') roomId: string,
+  ): Promise<{
+    issues: Array<{
+      id: string;
+      task: string;
+      assigneeNickName: string;
+      githubUsername: string | null;
+      dueDate: string | null;
+      issueNumber: number | null;
+      issueUrl: string | null;
+      issueState: string;
+      createdAt: Date;
+    }>;
+  }> {
+    const issues = await this.actionItemService.getCreatedIssues(roomId);
+    return { issues };
+  }
+
+  // ==========================================
+  // GitHub Projects API
+  // ==========================================
+
+  /**
+   * GET /github/channels/:channelId/projects
+   * Channel의 GitHub Projects 목록 조회
+   */
+  @Get('channels/:channelId/projects')
+  async listProjects(
+    @Param('channelId') channelId: string,
+  ): Promise<{
+    projects: Array<{
+      id: string;
+      number: number;
+      title: string;
+      url: string;
+    }>;
+  }> {
+    const projects = await this.githubProjectsService.listOwnerProjects(channelId);
+    return { projects };
+  }
+
+  /**
+   * POST /github/channels/:channelId/projects
+   * 새 GitHub Project 생성
+   */
+  @Post('channels/:channelId/projects')
+  async createProject(
+    @Param('channelId') channelId: string,
+    @Body() body: { title: string },
+  ): Promise<{
+    project: {
+      id: string;
+      number: number;
+      title: string;
+      url: string;
+    };
+  }> {
+    const project = await this.githubProjectsService.createProject(
+      channelId,
+      body.title,
+    );
+    return { project };
+  }
+
+  /**
+   * POST /github/channels/:channelId/projects/aura
+   * AURA 프로젝트 찾기 또는 생성
+   */
+  @Post('channels/:channelId/projects/aura')
+  async findOrCreateAuraProject(
+    @Param('channelId') channelId: string,
+  ): Promise<{
+    project: {
+      id: string;
+      number: number;
+      title: string;
+      url: string;
+    };
+  }> {
+    const project = await this.githubProjectsService.findOrCreateAuraProject(channelId);
+    return { project };
+  }
+
+  /**
+   * PUT /github/channels/:channelId/project-settings
+   * Channel의 프로젝트 설정 저장
+   */
+  @Put('channels/:channelId/project-settings')
+  @HttpCode(HttpStatus.OK)
+  async updateProjectSettings(
+    @Param('channelId') channelId: string,
+    @Body() body: { projectId: string | null; autoAddToProject: boolean },
+  ): Promise<{ success: boolean; message: string }> {
+    await this.githubProjectsService.saveProjectSettings(
+      channelId,
+      body.projectId,
+      body.autoAddToProject,
+    );
+    return {
+      success: true,
+      message: `Project settings saved for channel ${channelId}`,
+    };
+  }
+
+  /**
+   * GET /github/channels/:channelId/project-settings
+   * Channel의 프로젝트 설정 조회
+   */
+  @Get('channels/:channelId/project-settings')
+  async getProjectSettings(
+    @Param('channelId') channelId: string,
+  ): Promise<{
+    projectId: string | null;
+    autoAddToProject: boolean;
+  }> {
+    return this.githubProjectsService.getProjectSettings(channelId);
   }
 
   // ==========================================
