@@ -46,6 +46,8 @@ model Channel {
   githubInstallationId String?
   githubAppId          String?         @db.VarChar(20)
   githubPrivateKey     String?
+  githubProjectId      String?         // GitHub Projects v2 node ID
+  githubAutoAddToProject Boolean       @default(false)
   owner                User            @relation("ChannelOwner", fields: [ownerId], references: [userId], onDelete: Cascade, onUpdate: NoAction, map: "FK_79ff036dd0e6747303835b0b3b9")
   members              ChannelMember[]
   joinRequests         JoinRequest[]

@@ -6,6 +6,7 @@ import {
 } from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
 import { GitHubService } from '../github.service';
+import { GitHubProjectsService } from './github-projects.service';
 import { ActionItemParserService } from './action-item-parser.service';
 import {
   ActionItem,
@@ -21,6 +22,18 @@ import { GitHubConfig } from '../interfaces/github-config.interface';
 import { S3Client, GetObjectCommand } from '@aws-sdk/client-s3';
 import { ActionItemIssue } from '../../../generated/prisma';
 
+/**
+ * Project 설정 정보
+ */
+interface ProjectConfig {
+  projectId: string;
+  installationId: number;
+  owner: string;
+  repo: string;
+  appId?: string;
+  privateKey?: string;
+}
+
 @Injectable()
 export class ActionItemService {
   private readonly logger = new Logger(ActionItemService.name);
@@ -30,6 +43,7 @@ export class ActionItemService {
     private readonly prisma: PrismaService,
     private readonly parser: ActionItemParserService,
     private readonly githubService: GitHubService,
+    private readonly projectsService: GitHubProjectsService,
   ) {
     this.s3Client = new S3Client({
       region: process.env.AWS_REGION || 'ap-northeast-2',
@@ -90,22 +104,25 @@ export class ActionItemService {
       throw new BadRequestException('GitHub 연동이 설정되지 않았습니다.');
     }
 
-    // 4. 제외 필터 적용
+    // 4. Project 설정 조회 (Channel에서)
+    const projectConfig = await this.getProjectConfig(report.channelId, githubConfig);
+
+    // 5. 제외 필터 적용
     let items = parsed.items;
     if (options?.excludeAssignees?.length) {
       items = items.filter((i) => !options.excludeAssignees!.includes(i.assignee));
     }
 
-    // 5. Dry run 처리
+    // 6. Dry run 처리
     if (options?.dryRun) {
       return this.dryRunResponse(roomId, report, items);
     }
 
-    // 6. 각 아이템에 대해 Issue 생성
+    // 7. 각 아이템에 대해 Issue 생성
     const results: ActionItemIssueResultDto[] = [];
 
     for (const item of items) {
-      const result = await this.createSingleIssue(item, report, githubConfig);
+      const result = await this.createSingleIssue(item, report, githubConfig, projectConfig);
       results.push(result);
 
       // Rate limiting 방지: 100ms 간격
@@ -129,6 +146,39 @@ export class ActionItemService {
   }
 
   /**
+   * Channel에서 Project 설정 조회
+   */
+  private async getProjectConfig(
+    channelId: string,
+    githubConfig: GitHubConfig,
+  ): Promise<ProjectConfig | null> {
+    const projectSettings = await this.githubService.getChannelConfigForProjects(channelId);
+
+    this.logger.debug(`Project settings for channel ${channelId}:`, {
+      projectId: projectSettings?.projectId,
+      autoAddToProject: projectSettings?.autoAddToProject,
+    });
+
+    if (!projectSettings?.projectId || !projectSettings.autoAddToProject) {
+      this.logger.debug(`Project config not available: projectId=${projectSettings?.projectId}, autoAddToProject=${projectSettings?.autoAddToProject}`);
+      return null;
+    }
+
+    const config = {
+      projectId: projectSettings.projectId,
+      installationId: projectSettings.installationId,
+      owner: githubConfig.owner,
+      repo: githubConfig.repo,
+      appId: projectSettings.appId,
+      privateKey: projectSettings.privateKey,
+    };
+
+    this.logger.log(`Project config loaded: projectId=${config.projectId}, owner=${config.owner}, repo=${config.repo}`);
+
+    return config;
+  }
+
+  /**
    * 생성된 Issue 목록 조회
    */
   async getCreatedIssues(roomId: string): Promise<ActionItemIssue[]> {
@@ -145,6 +195,7 @@ export class ActionItemService {
     item: ActionItem,
     report: ReportData,
     config: GitHubConfig,
+    projectConfig?: ProjectConfig | null,
   ): Promise<ActionItemIssueResultDto> {
     // 1. 중복 체크
     const existing = await this.prisma.actionItemIssue.findUnique({
@@ -183,7 +234,18 @@ export class ActionItemService {
         assignees,
       );
 
-      // 4. DB에 기록
+      // 4. Project에 Issue 추가 (설정된 경우)
+      if (projectConfig) {
+        this.logger.log(`Adding Issue #${issueResult.issueNumber} to project ${projectConfig.projectId}...`);
+        await this.addIssueToProject(
+          projectConfig,
+          issueResult.issueNumber,
+        );
+      } else {
+        this.logger.debug(`Skipping project placement: no projectConfig`);
+      }
+
+      // 5. DB에 기록
       await this.prisma.actionItemIssue.upsert({
         where: {
           reportId_task: { reportId: report.reportId, task: item.task },
@@ -245,6 +307,41 @@ export class ActionItemService {
         state: 'FAILED',
         error: error.message,
       };
+    }
+  }
+
+  /**
+   * Issue를 GitHub Project에 추가
+   */
+  private async addIssueToProject(
+    projectConfig: ProjectConfig,
+    issueNumber: number,
+  ): Promise<void> {
+    try {
+      const result = await this.projectsService.addIssueToProject(
+        projectConfig.installationId,
+        projectConfig.projectId,
+        projectConfig.owner,
+        projectConfig.repo,
+        issueNumber,
+        projectConfig.appId,
+        projectConfig.privateKey,
+      );
+
+      if (result.success) {
+        this.logger.log(
+          `Issue #${issueNumber} added to project (item ID: ${result.itemId})`,
+        );
+      } else {
+        this.logger.warn(
+          `Failed to add Issue #${issueNumber} to project: ${result.error}`,
+        );
+      }
+    } catch (error) {
+      // Project 추가 실패는 Issue 생성 실패로 처리하지 않음
+      this.logger.warn(
+        `Error adding Issue #${issueNumber} to project: ${error.message}`,
+      );
     }
   }
 
