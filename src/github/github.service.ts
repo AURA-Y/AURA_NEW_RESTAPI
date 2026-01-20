@@ -149,6 +149,7 @@ export class GitHubService {
    * @param title - Issue 제목
    * @param body - Issue 본문 (Markdown)
    * @param labels - 라벨 (선택, 없으면 config.labels 사용)
+   * @param assignees - 담당자 GitHub username 배열 (선택)
    * @returns Issue 번호와 URL
    *
    * Flow:
@@ -161,6 +162,7 @@ export class GitHubService {
     title: string,
     body: string,
     labels?: string[],
+    assignees?: string[],
   ): Promise<GitHubIssueResult> {
     const octokit = await this.githubAppService.getInstallationOctokit(
       config.installationId,
@@ -171,8 +173,9 @@ export class GitHubService {
     const issueLabels = labels ?? config.labels;
 
     const appInfo = config.appId ? ` (App ID: ${config.appId})` : '';
+    const assigneeInfo = assignees?.length ? ` (assignees: ${assignees.join(', ')})` : '';
     this.logger.log(
-      `Creating issue in ${config.owner}/${config.repo}: "${title}"${appInfo}`,
+      `Creating issue in ${config.owner}/${config.repo}: "${title}"${appInfo}${assigneeInfo}`,
     );
 
     const response = await octokit.rest.issues.create({
@@ -181,6 +184,7 @@ export class GitHubService {
       title,
       body,
       labels: issueLabels.length > 0 ? issueLabels : undefined,
+      assignees: assignees?.length ? assignees : undefined,
     });
 
     this.logger.log(
@@ -271,6 +275,8 @@ export class GitHubService {
    * @param repoName - Repository 이름
    * @param labels - 라벨 배열
    * @param autoCreate - 자동 생성 여부
+   * @param projectId - GitHub Projects v2 node ID (선택)
+   * @param autoAddToProject - Issue 생성 시 자동으로 Project에 추가
    */
   async saveChannelSettings(
     channelId: string,
@@ -281,6 +287,8 @@ export class GitHubService {
     repoName: string,
     labels: string[],
     autoCreate: boolean,
+    projectId?: string,
+    autoAddToProject?: boolean,
   ): Promise<void> {
     // Installation ID 암호화
     const encryptedInstallationId =
@@ -301,12 +309,39 @@ export class GitHubService {
         githubRepoName: repoName,
         githubIssueLabels: labels,
         githubAutoCreate: autoCreate,
+        githubProjectId: projectId ?? undefined,
+        githubAutoAddToProject: autoAddToProject ?? false,
       },
     });
 
     const appInfo = appId ? ` (App ID: ${appId})` : ' (using default App)';
     this.logger.log(
       `Saved GitHub settings for Channel ${channelId}: ${repoOwner}/${repoName}${appInfo}`,
+    );
+  }
+
+  /**
+   * Channel Project 설정 저장
+   *
+   * @param channelId - Channel ID
+   * @param projectId - GitHub Projects v2 node ID (null이면 해제)
+   * @param autoAddToProject - Issue 생성 시 자동으로 Project에 추가
+   */
+  async saveProjectSettings(
+    channelId: string,
+    projectId: string | null,
+    autoAddToProject: boolean,
+  ): Promise<void> {
+    await this.prisma.channel.update({
+      where: { channelId },
+      data: {
+        githubProjectId: projectId,
+        githubAutoAddToProject: autoAddToProject,
+      },
+    });
+
+    this.logger.log(
+      `Saved Project settings for Channel ${channelId}: projectId=${projectId}, autoAdd=${autoAddToProject}`,
     );
   }
 
@@ -324,6 +359,8 @@ export class GitHubService {
     repoName?: string;
     labels?: string[];
     autoCreate?: boolean;
+    projectId?: string;
+    autoAddToProject?: boolean;
   }> {
     const channel = await this.prisma.channel.findUnique({
       where: { channelId },
@@ -335,6 +372,8 @@ export class GitHubService {
         githubRepoName: true,
         githubIssueLabels: true,
         githubAutoCreate: true,
+        githubProjectId: true,
+        githubAutoAddToProject: true,
       },
     });
 
@@ -353,6 +392,76 @@ export class GitHubService {
       repoName: channel.githubRepoName ?? undefined,
       labels: channel.githubIssueLabels,
       autoCreate: channel.githubAutoCreate,
+      projectId: channel.githubProjectId ?? undefined,
+      autoAddToProject: channel.githubAutoAddToProject,
+    };
+  }
+
+  /**
+   * Projects API용 Channel Config 조회
+   *
+   * @param channelId - Channel ID
+   * @returns Installation ID, Owner, App 정보 등 (Projects API 호출에 필요)
+   */
+  async getChannelConfigForProjects(channelId: string): Promise<{
+    installationId: number;
+    owner: string;
+    repo?: string;
+    appId?: string;
+    privateKey?: string;
+    projectId?: string;
+    autoAddToProject: boolean;
+  } | null> {
+    const channel = await this.prisma.channel.findUnique({
+      where: { channelId },
+      select: {
+        githubAppId: true,
+        githubPrivateKey: true,
+        githubInstallationId: true,
+        githubRepoOwner: true,
+        githubRepoName: true,
+        githubProjectId: true,
+        githubAutoAddToProject: true,
+      },
+    });
+
+    if (!channel || !channel.githubInstallationId || !channel.githubRepoOwner) {
+      return null;
+    }
+
+    // Installation ID 복호화
+    let installationId: number;
+    try {
+      const decrypted = this.encryptionService.decrypt(
+        channel.githubInstallationId,
+      );
+      installationId = parseInt(decrypted, 10);
+      if (isNaN(installationId)) {
+        throw new Error('Invalid Installation ID');
+      }
+    } catch (error) {
+      this.logger.error(`Failed to decrypt Installation ID: ${error.message}`);
+      return null;
+    }
+
+    // Private Key 복호화 (있는 경우)
+    let privateKey: string | undefined;
+    if (channel.githubPrivateKey) {
+      try {
+        privateKey = this.encryptionService.decrypt(channel.githubPrivateKey);
+      } catch (error) {
+        this.logger.error(`Failed to decrypt Private Key: ${error.message}`);
+      }
+    }
+
+    return {
+      installationId,
+      owner: channel.githubRepoOwner,
+      repo: channel.githubRepoName ?? undefined,
+      appId: channel.githubAppId ?? undefined,
+      privateKey,
+      projectId: channel.githubProjectId ?? undefined,
+      autoAddToProject: channel.githubAutoAddToProject,
     };
   }
 

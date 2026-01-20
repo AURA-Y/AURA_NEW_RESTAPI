@@ -12,17 +12,28 @@ import {
   BadRequestException,
 } from '@nestjs/common';
 import { GitHubService } from './github.service';
+import { ActionItemService } from './services/action-item.service';
+import { GitHubProjectsService, GitHubProject } from './services/github-projects.service';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import {
   UpdateChannelGitHubSettingsDto,
   UpdateRoomGitHubOverrideDto,
   ChannelGitHubSettingsResponseDto,
   RoomGitHubOverrideResponseDto,
+  UpdateProjectSettingsDto,
+  CreateProjectDto,
+  GitHubProjectDto,
 } from './dto/github-settings.dto';
 import {
   CreateGitHubIssueDto,
   CreateGitHubIssueResponseDto,
 } from './dto/create-issue.dto';
+import {
+  CreateActionItemIssuesDto,
+  CreateActionItemIssuesResponseDto,
+  ActionItemPreviewDto,
+} from './dto/action-item.dto';
+import { ActionItemIssue } from '../../generated/prisma';
 
 /**
  * GitHubController
@@ -38,7 +49,11 @@ import {
 @Controller('github')
 @UseGuards(JwtAuthGuard)
 export class GitHubController {
-  constructor(private readonly githubService: GitHubService) {}
+  constructor(
+    private readonly githubService: GitHubService,
+    private readonly actionItemService: ActionItemService,
+    private readonly projectsService: GitHubProjectsService,
+  ) {}
 
   // ==========================================
   // Channel GitHub 설정 API
@@ -94,6 +109,8 @@ export class GitHubController {
       dto.repoName,
       dto.labels ?? [],
       dto.autoCreate ?? false,
+      dto.projectId,
+      dto.autoAddToProject,
     );
 
     const appInfo = dto.appId ? ` (App ID: ${dto.appId})` : '';
@@ -317,5 +334,238 @@ export class GitHubController {
       repoOwner,
       repoName,
     );
+  }
+
+  // ==========================================
+  // Action Item → GitHub Issue API
+  // ==========================================
+
+  /**
+   * GET /github/rooms/:roomId/action-items
+   * 액션 아이템 미리보기 (파싱 + GitHub 매핑)
+   *
+   * Response:
+   * [
+   *   {
+   *     "assignee": "조명기",
+   *     "task": "STT 설정 진행",
+   *     "dueDate": null,
+   *     "userId": "uuid-xxx",
+   *     "githubUsername": "jomyeonggi",
+   *     "canCreateIssue": true
+   *   }
+   * ]
+   */
+  @Get('rooms/:roomId/action-items')
+  async getActionItemsPreview(
+    @Param('roomId') roomId: string,
+  ): Promise<ActionItemPreviewDto[]> {
+    return this.actionItemService.getPreview(roomId);
+  }
+
+  /**
+   * POST /github/rooms/:roomId/action-items/issues
+   * 액션 아이템 → GitHub Issues 일괄 생성
+   *
+   * Request Body:
+   * {
+   *   "excludeAssignees": ["특정담당자"],  // 선택: 제외할 담당자
+   *   "dryRun": false                       // 선택: true면 미리보기만
+   * }
+   *
+   * Response:
+   * {
+   *   "roomId": "room-xxx",
+   *   "totalItems": 2,
+   *   "created": 2,
+   *   "results": [...]
+   * }
+   */
+  @Post('rooms/:roomId/action-items/issues')
+  async createActionItemIssues(
+    @Param('roomId') roomId: string,
+    @Body() dto: CreateActionItemIssuesDto,
+  ): Promise<CreateActionItemIssuesResponseDto> {
+    return this.actionItemService.createIssuesFromReport(roomId, dto);
+  }
+
+  /**
+   * GET /github/rooms/:roomId/action-items/issues
+   * 생성된 액션 아이템 Issue 목록 조회
+   */
+  @Get('rooms/:roomId/action-items/issues')
+  async getActionItemIssues(
+    @Param('roomId') roomId: string,
+  ): Promise<ActionItemIssue[]> {
+    return this.actionItemService.getCreatedIssues(roomId);
+  }
+
+  // ==========================================
+  // GitHub Projects API
+  // ==========================================
+
+  /**
+   * GET /github/channels/:channelId/projects
+   * 사용 가능한 GitHub Projects 목록 조회
+   *
+   * Channel에 GitHub이 연동되어 있어야 함
+   * Repository owner의 모든 프로젝트를 반환
+   */
+  @Get('channels/:channelId/projects')
+  async listProjects(
+    @Param('channelId') channelId: string,
+  ): Promise<GitHubProjectDto[]> {
+    const config = await this.githubService.getChannelConfigForProjects(channelId);
+
+    if (!config) {
+      throw new BadRequestException('GitHub is not configured for this channel');
+    }
+
+    const projects = await this.projectsService.listOwnerProjects(
+      config.installationId,
+      config.owner,
+      null, // 자동 감지 (Organization/User)
+      config.appId,
+      config.privateKey,
+      config.repo, // Repository 기반 fallback용
+    );
+
+    return projects.map((p) => ({
+      id: p.id,
+      number: p.number,
+      title: p.title,
+      url: p.url,
+      createdAt: p.createdAt,
+      updatedAt: p.updatedAt,
+      public: p.public,
+    }));
+  }
+
+  /**
+   * POST /github/channels/:channelId/projects
+   * 새 GitHub Project 생성
+   *
+   * Request Body:
+   * {
+   *   "title": "AURA Action Items"
+   * }
+   */
+  @Post('channels/:channelId/projects')
+  async createProject(
+    @Param('channelId') channelId: string,
+    @Body() dto: CreateProjectDto,
+  ): Promise<{ success: boolean; project?: GitHubProjectDto; message?: string }> {
+    const config = await this.githubService.getChannelConfigForProjects(channelId);
+
+    if (!config) {
+      throw new BadRequestException('GitHub is not configured for this channel');
+    }
+
+    const project = await this.projectsService.createProject(
+      config.installationId,
+      config.owner,
+      dto.title,
+      null, // 자동 감지 (Organization/User)
+      config.appId,
+      config.privateKey,
+    );
+
+    if (!project) {
+      return {
+        success: false,
+        message: 'Failed to create project. Please check GitHub App permissions.',
+      };
+    }
+
+    return {
+      success: true,
+      project: {
+        id: project.id,
+        number: project.number,
+        title: project.title,
+        url: project.url,
+        createdAt: project.createdAt,
+        updatedAt: project.updatedAt,
+        public: project.public,
+      },
+    };
+  }
+
+  /**
+   * PUT /github/channels/:channelId/project
+   * Channel에 사용할 Project 설정
+   *
+   * Request Body:
+   * {
+   *   "projectId": "PVT_xxx",  // null이면 해제
+   *   "autoAddToProject": true
+   * }
+   */
+  @Put('channels/:channelId/project')
+  @HttpCode(HttpStatus.OK)
+  async setProjectSettings(
+    @Param('channelId') channelId: string,
+    @Body() dto: UpdateProjectSettingsDto,
+  ): Promise<{ success: boolean; message: string }> {
+    await this.githubService.saveProjectSettings(
+      channelId,
+      dto.projectId ?? null,
+      dto.autoAddToProject ?? false,
+    );
+
+    return {
+      success: true,
+      message: dto.projectId
+        ? `Project settings saved for channel ${channelId}`
+        : `Project settings cleared for channel ${channelId}`,
+    };
+  }
+
+  /**
+   * POST /github/channels/:channelId/projects/auto-create
+   * AURA 기본 프로젝트 자동 생성 및 설정
+   *
+   * "AURA Action Items" 프로젝트가 없으면 생성하고, Channel에 설정
+   */
+  @Post('channels/:channelId/projects/auto-create')
+  async autoCreateProject(
+    @Param('channelId') channelId: string,
+  ): Promise<{ success: boolean; project?: GitHubProjectDto; message?: string }> {
+    const config = await this.githubService.getChannelConfigForProjects(channelId);
+
+    if (!config) {
+      throw new BadRequestException('GitHub is not configured for this channel');
+    }
+
+    const project = await this.projectsService.findOrCreateAuraProject(
+      config.installationId,
+      config.owner,
+      config.appId,
+      config.privateKey,
+      config.repo,
+    );
+
+    if (!project) {
+      return {
+        success: false,
+        message: 'Failed to create or find AURA project. Please check GitHub App permissions.',
+      };
+    }
+
+    // Channel에 프로젝트 설정 저장
+    await this.githubService.saveProjectSettings(channelId, project.id, true);
+
+    return {
+      success: true,
+      project: {
+        id: project.id,
+        number: project.number,
+        title: project.title,
+        url: project.url,
+        createdAt: project.createdAt,
+        updatedAt: project.updatedAt,
+        public: project.public,
+      },
+    };
   }
 }

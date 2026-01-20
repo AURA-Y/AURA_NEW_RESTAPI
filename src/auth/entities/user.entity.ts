@@ -45,6 +45,16 @@ export class User {
   @Column({ type: "text", nullable: true })
   profileImage: string | null;
 
+  // GitHub 계정 연동
+  @Column({ type: "varchar", length: 39, nullable: true })
+  githubUsername: string | null;
+
+  @Column({ type: "int", nullable: true })
+  githubId: number | null;
+
+  @Column({ type: "timestamp with time zone", nullable: true })
+  githubLinkedAt: Date | null;
+
   @BeforeInsert()
   setInsertDefaults() {
     if (!this.userId) {
