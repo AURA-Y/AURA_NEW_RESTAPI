@@ -433,4 +433,110 @@ export class AuthService {
 
     return { connected: !!(user?.googleAccessToken) };
   }
+
+  // ==================== GitHub 계정 연동 ====================
+
+  /**
+   * GitHub 연동 상태 조회
+   */
+  async getGitHubStatus(userId: string): Promise<{
+    isConnected: boolean;
+    githubUsername: string | null;
+    linkedAt: Date | null;
+  }> {
+    const user = await this.userRepository.findOne({
+      where: { userId },
+      select: ['userId', 'githubUsername', 'githubLinkedAt'],
+    });
+
+    if (!user) {
+      throw new UnauthorizedException('사용자를 찾을 수 없습니다.');
+    }
+
+    return {
+      isConnected: !!user.githubUsername,
+      githubUsername: user.githubUsername || null,
+      linkedAt: user.githubLinkedAt || null,
+    };
+  }
+
+  /**
+   * GitHub 계정 연동
+   *
+   * @param userId 사용자 ID
+   * @param githubUsername GitHub username
+   * @returns 성공 메시지
+   */
+  async linkGitHub(
+    userId: string,
+    githubUsername: string,
+  ): Promise<{ success: boolean; message: string }> {
+    const user = await this.userRepository.findOne({
+      where: { userId },
+    });
+
+    if (!user) {
+      throw new UnauthorizedException('사용자를 찾을 수 없습니다.');
+    }
+
+    // 이미 다른 사용자가 해당 GitHub username을 사용 중인지 확인
+    const existingUser = await this.userRepository.findOne({
+      where: { githubUsername },
+    });
+
+    if (existingUser && existingUser.userId !== userId) {
+      throw new ConflictException(
+        `GitHub username '${githubUsername}'은(는) 이미 다른 사용자가 연동 중입니다.`,
+      );
+    }
+
+    // GitHub username 연동
+    user.githubUsername = githubUsername;
+    user.githubLinkedAt = new Date();
+
+    await this.userRepository.save(user);
+
+    this.logger.log(`GitHub linked: ${user.nickName} → @${githubUsername}`);
+
+    return {
+      success: true,
+      message: `GitHub 계정 @${githubUsername}이(가) 연동되었습니다.`,
+    };
+  }
+
+  /**
+   * GitHub 연동 해제
+   */
+  async unlinkGitHub(userId: string): Promise<{ success: boolean; message: string }> {
+    const user = await this.userRepository.findOne({
+      where: { userId },
+    });
+
+    if (!user) {
+      throw new UnauthorizedException('사용자를 찾을 수 없습니다.');
+    }
+
+    if (!user.githubUsername) {
+      return {
+        success: true,
+        message: 'GitHub 계정이 연동되어 있지 않습니다.',
+      };
+    }
+
+    const previousUsername = user.githubUsername;
+
+    // GitHub 연동 정보 초기화
+    user.githubUsername = null;
+    user.githubId = null;
+    user.githubLinkedAt = null;
+
+    await this.userRepository.save(user);
+
+    this.logger.log(`GitHub unlinked: ${user.nickName} (was @${previousUsername})`);
+
+    return {
+      success: true,
+      message: 'GitHub 연동이 해제되었습니다.',
+    };
+  }
 }

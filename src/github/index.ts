@@ -7,6 +7,8 @@ export { GitHubController } from './github.controller';
 // Services
 export { GitHubService } from './github.service';
 export { GitHubAppService } from './github-app.service';
+export { ActionItemService } from './services/action-item.service';
+export { ActionItemParserService } from './services/action-item-parser.service';
 
 // DTOs
 export {
@@ -19,6 +21,12 @@ export {
   CreateGitHubIssueDto,
   CreateGitHubIssueResponseDto,
 } from './dto/create-issue.dto';
+export {
+  CreateActionItemIssuesDto,
+  CreateActionItemIssuesResponseDto,
+  ActionItemIssueResultDto,
+  ActionItemPreviewDto,
+} from './dto/action-item.dto';
 
 // Interfaces
 export {
@@ -26,3 +34,9 @@ export {
   GitHubIssueResult,
   GitHubConnectionTestResult,
 } from './interfaces/github-config.interface';
+export {
+  ActionItem,
+  ParsedActionItems,
+  ActionItemWithGitHub,
+  ReportData,
+} from './interfaces/action-item.interface';
