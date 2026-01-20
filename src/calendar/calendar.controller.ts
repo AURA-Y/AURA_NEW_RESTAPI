@@ -213,6 +213,7 @@ export class CalendarController {
       time?: string;
       description?: string;
       durationMinutes?: number;
+      attendees?: string[];
     },
   ) {
     const userId = req.user.userId;

@@ -30,7 +30,7 @@ export class CalendarService implements OnModuleInit {
     @InjectRepository(Room)
     private roomRepository: Repository<Room>,
     private configService: ConfigService,
-  ) {}
+  ) { }
 
   onModuleInit() {
     // 1. Service Account 초기화 (기존 공용 캘린더용)
@@ -357,12 +357,13 @@ export class CalendarService implements OnModuleInit {
       time?: string; // HH:mm
       description?: string;
       durationMinutes?: number;
+      attendees?: string[]; // 참석자 이메일 목록
     },
   ): Promise<calendar_v3.Schema$Event> {
     const oauth2Client = await this.getUserOAuth2Client(userId);
     const calendar = google.calendar({ version: 'v3', auth: oauth2Client });
 
-    const { title, date, time, description, durationMinutes = 60 } = params;
+    const { title, date, time, description, durationMinutes = 60, attendees } = params;
 
     const updateBody: calendar_v3.Schema$Event = {};
 
@@ -372,6 +373,11 @@ export class CalendarService implements OnModuleInit {
 
     if (description !== undefined) {
       updateBody.description = description;
+    }
+
+    // 참석자 업데이트 (빈 배열이면 참석자 제거, undefined면 변경 안함)
+    if (attendees !== undefined) {
+      updateBody.attendees = attendees.map(email => ({ email }));
     }
 
     if (date) {
@@ -407,7 +413,7 @@ export class CalendarService implements OnModuleInit {
       sendUpdates: 'all',
     });
 
-    this.logger.log(`[개인캘린더] 일정 수정: ${eventId} for user ${userId}`);
+    this.logger.log(`[개인캘린더] 일정 수정: ${eventId} for user ${userId}${attendees ? ` (참석자 ${attendees.length}명)` : ''}`);
     return response.data;
   }
 
