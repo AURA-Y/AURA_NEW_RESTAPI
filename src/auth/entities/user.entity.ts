@@ -45,6 +45,10 @@ export class User {
   @Column({ type: "text", nullable: true })
   profileImage: string | null;
 
+  // GitHub 사용자명 (액션 아이템 Assignee 연동용)
+  @Column({ type: "varchar", length: 39, nullable: true })
+  githubUsername: string | null;
+
   @BeforeInsert()
   setInsertDefaults() {
     if (!this.userId) {

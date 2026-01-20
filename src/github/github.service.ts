@@ -49,14 +49,14 @@ export class GitHubService {
     // Room과 Channel 함께 조회
     const room = await this.prisma.room.findUnique({
       where: { roomId },
-      include: { channel: true },
+      include: { Channel: true },
     });
 
     if (!room) {
       throw new NotFoundException(`Room not found: ${roomId}`);
     }
 
-    const channel = room.channel;
+    const channel = room.Channel;
 
     // Channel에 GitHub 설정이 없으면 null
     if (!channel.githubInstallationId) {
@@ -195,6 +195,46 @@ export class GitHubService {
   }
 
   /**
+   * GitHub Issue에 Assignee 할당
+   *
+   * @param config - GitHub Config
+   * @param issueNumber - Issue 번호
+   * @param assignees - 할당할 GitHub username 배열
+   * @returns 성공 여부
+   */
+  async assignIssue(
+    config: GitHubConfig,
+    issueNumber: number,
+    assignees: string[],
+  ): Promise<boolean> {
+    try {
+      const octokit = await this.githubAppService.getInstallationOctokit(
+        config.installationId,
+        config.appId,
+        config.privateKey,
+      );
+
+      await octokit.rest.issues.addAssignees({
+        owner: config.owner,
+        repo: config.repo,
+        issue_number: issueNumber,
+        assignees,
+      });
+
+      this.logger.log(
+        `Assigned issue #${issueNumber} to ${assignees.join(', ')}`,
+      );
+
+      return true;
+    } catch (error) {
+      this.logger.warn(
+        `Failed to assign issue #${issueNumber}: ${error.message}`,
+      );
+      return false;
+    }
+  }
+
+  /**
    * GitHub 연결 테스트
    *
    * @param appId - GitHub App ID (선택, Channel별 App 사용 시)
@@ -324,6 +364,8 @@ export class GitHubService {
     repoName?: string;
     labels?: string[];
     autoCreate?: boolean;
+    projectId?: string | null;
+    autoAddToProject?: boolean;
   }> {
     const channel = await this.prisma.channel.findUnique({
       where: { channelId },
@@ -335,6 +377,8 @@ export class GitHubService {
         githubRepoName: true,
         githubIssueLabels: true,
         githubAutoCreate: true,
+        githubProjectId: true,
+        githubAutoAddToProject: true,
       },
     });
 
@@ -353,6 +397,8 @@ export class GitHubService {
       repoName: channel.githubRepoName ?? undefined,
       labels: channel.githubIssueLabels,
       autoCreate: channel.githubAutoCreate,
+      projectId: channel.githubProjectId,
+      autoAddToProject: channel.githubAutoAddToProject,
     };
   }
 
@@ -423,7 +469,7 @@ export class GitHubService {
   }> {
     const room = await this.prisma.room.findUnique({
       where: { roomId },
-      include: { channel: true },
+      include: { Channel: true },
     });
 
     if (!room) {
@@ -449,11 +495,11 @@ export class GitHubService {
     }
 
     // Channel 설정도 함께 반환 (참고용)
-    if (room.channel.githubRepoOwner && room.channel.githubRepoName) {
+    if (room.Channel.githubRepoOwner && room.Channel.githubRepoName) {
       result.channelSettings = {
-        repoOwner: room.channel.githubRepoOwner,
-        repoName: room.channel.githubRepoName,
-        labels: room.channel.githubIssueLabels,
+        repoOwner: room.Channel.githubRepoOwner,
+        repoName: room.Channel.githubRepoName,
+        labels: room.Channel.githubIssueLabels,
       };
     }
 

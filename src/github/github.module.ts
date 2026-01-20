@@ -2,6 +2,9 @@ import { Module } from '@nestjs/common';
 import { GitHubController } from './github.controller';
 import { GitHubService } from './github.service';
 import { GitHubAppService } from './github-app.service';
+import { GitHubProjectsService } from './github-projects.service';
+import { ActionItemService } from './services/action-item.service';
+import { ActionItemParserService } from './services/action-item-parser.service';
 
 /**
  * GitHubModule
@@ -25,7 +28,18 @@ import { GitHubAppService } from './github-app.service';
  */
 @Module({
   controllers: [GitHubController],
-  providers: [GitHubAppService, GitHubService],
-  exports: [GitHubService, GitHubAppService],
+  providers: [
+    GitHubAppService,
+    GitHubService,
+    GitHubProjectsService,
+    ActionItemParserService,
+    ActionItemService,
+  ],
+  exports: [
+    GitHubService,
+    GitHubAppService,
+    GitHubProjectsService,
+    ActionItemService,
+  ],
 })
 export class GitHubModule {}
