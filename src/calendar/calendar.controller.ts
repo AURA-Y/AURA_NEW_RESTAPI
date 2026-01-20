@@ -167,6 +167,7 @@ export class CalendarController {
         location: e.location,
         link: e.htmlLink,
         status: e.status,
+        attendees: e.attendees?.map((a) => ({ email: a.email, responseStatus: a.responseStatus })) || [],
       })),
     };
   }
