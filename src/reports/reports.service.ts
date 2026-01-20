@@ -992,12 +992,40 @@ export class ReportsService {
       throw new NotFoundException(`User not found: ${userId}`);
     }
 
+    // 1. 기본 권한 체크: 참석자인지 확인
     const reportIds = await this.getAccessibleReportIds(
       user.userId,
       user.nickName
     );
-    if (!reportIds.includes(reportId)) {
-      throw new ForbiddenException("Not allowed to delete this report");
+    const isAttendee = reportIds.includes(reportId);
+
+    // 2. 참석자가 아니면 채널 관리자/오너 권한 확인
+    if (!isAttendee) {
+      // 회의록의 채널 정보 조회
+      const report = await this.reportsRepository.findOne({
+        where: { reportId },
+        select: { reportId: true, channelId: true },
+      });
+
+      if (!report) {
+        throw new NotFoundException(`Report not found: ${reportId}`);
+      }
+
+      // 채널의 멤버 권한 확인
+      const channelMember = await this.channelMemberRepository.findOne({
+        where: {
+          userId,
+          channelId: report.channelId,
+        },
+        select: { role: true },
+      });
+
+      // 채널 멤버가 아니거나 ADMIN/OWNER가 아니면 권한 없음
+      if (!channelMember || (channelMember.role !== "ADMIN" && channelMember.role !== "OWNER")) {
+        throw new ForbiddenException("Not allowed to delete this report");
+      }
+
+      this.logger.log(`[Admin Override] User ${userId} (role: ${channelMember.role}) deleting report ${reportId}`);
     }
 
     // S3 폴더 삭제 (reportId 기준)

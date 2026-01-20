@@ -120,8 +120,22 @@ export class RoomService {
   async deleteRoom(roomId: string, userId: string): Promise<void> {
     const room = await this.getRoomById(roomId);
 
-    if (room.masterId !== userId) {
-      throw new ForbiddenException("Only the master can delete this room");
+    // 1. 기본 권한 체크: 방 생성자인지 확인
+    const isMaster = room.masterId === userId;
+
+    // 2. 방 생성자가 아니면 채널 관리자/오너 권한 확인
+    if (!isMaster) {
+      const channelMember = await this.channelMemberRepository.findOne({
+        where: { userId, channelId: room.channelId },
+        select: { role: true },
+      });
+
+      // 채널 멤버가 아니거나 ADMIN/OWNER가 아니면 권한 없음
+      if (!channelMember || (channelMember.role !== "ADMIN" && channelMember.role !== "OWNER")) {
+        throw new ForbiddenException("Only the master or channel admin/owner can delete this room");
+      }
+
+      this.logger.log(`[Admin Override] User ${userId} (role: ${channelMember.role}) deleting room ${roomId}`);
     }
 
     // Room 삭제 전에 attendees 동기화 + endedAt 설정

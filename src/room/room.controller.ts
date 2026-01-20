@@ -12,6 +12,7 @@ import {
 import { RoomService } from "./room.service";
 import { CreateRoomDto } from "./dto/create-room.dto";
 import { JwtAuthGuard } from "../auth/guards/jwt-auth.guard";
+import { JwtOrServiceKeyGuard } from "../auth/guards/jwt-or-service-key.guard";
 import { SseService } from "../sse/sse.service";
 
 @Controller("rooms")
@@ -79,7 +80,9 @@ export class RoomController {
   }
 
   // 정적 경로들 먼저 (topic, channel, team)
+  // JWT 또는 서비스 키 인증 허용 (LiveKit 서버 내부 호출용)
   @Get("topic/:topic")
+  @UseGuards(JwtOrServiceKeyGuard)
   async getRoomByTopic(@Param("topic") topic: string) {
     return this.roomService.getRoomByTopic(topic);
   }
