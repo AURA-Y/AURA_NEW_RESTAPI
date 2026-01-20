@@ -489,6 +489,7 @@ export class CalendarService implements OnModuleInit {
       time?: string;
       description?: string;
       durationMinutes?: number;
+      attendees?: string[]; // 참석자 이메일 목록
       recurrence?: 'daily' | 'weekly' | 'monthly'; // 반복 유형
       repeatCount?: number; // 반복 횟수
       repeatUntil?: string; // 반복 종료일 (YYYY-MM-DD)
