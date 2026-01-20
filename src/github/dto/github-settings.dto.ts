@@ -55,6 +55,14 @@ export class UpdateChannelGitHubSettingsDto {
   @IsBoolean()
   @IsOptional()
   autoCreate?: boolean;
+
+  @IsString()
+  @IsOptional()
+  projectId?: string | null; // GitHub Project ID (GraphQL node_id)
+
+  @IsBoolean()
+  @IsOptional()
+  autoAddToProject?: boolean;
 }
 
 /**
@@ -89,6 +97,8 @@ export class ChannelGitHubSettingsResponseDto {
   repoName?: string;
   labels?: string[];
   autoCreate?: boolean;
+  projectId?: string | null; // GitHub Project ID
+  autoAddToProject?: boolean;
 }
 
 /**

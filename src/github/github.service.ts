@@ -271,6 +271,8 @@ export class GitHubService {
    * @param repoName - Repository 이름
    * @param labels - 라벨 배열
    * @param autoCreate - 자동 생성 여부
+   * @param projectId - GitHub Project ID (선택)
+   * @param autoAddToProject - 자동 프로젝트 배치 여부
    */
   async saveChannelSettings(
     channelId: string,
@@ -281,6 +283,8 @@ export class GitHubService {
     repoName: string,
     labels: string[],
     autoCreate: boolean,
+    projectId?: string | null,
+    autoAddToProject?: boolean,
   ): Promise<void> {
     // Installation ID 암호화
     const encryptedInstallationId =
@@ -301,6 +305,8 @@ export class GitHubService {
         githubRepoName: repoName,
         githubIssueLabels: labels,
         githubAutoCreate: autoCreate,
+        githubProjectId: projectId ?? null,
+        githubAutoAddToProject: autoAddToProject ?? false,
       },
     });
 
@@ -324,6 +330,8 @@ export class GitHubService {
     repoName?: string;
     labels?: string[];
     autoCreate?: boolean;
+    projectId?: string | null;
+    autoAddToProject?: boolean;
   }> {
     const channel = await this.prisma.channel.findUnique({
       where: { channelId },
@@ -335,6 +343,8 @@ export class GitHubService {
         githubRepoName: true,
         githubIssueLabels: true,
         githubAutoCreate: true,
+        githubProjectId: true,
+        githubAutoAddToProject: true,
       },
     });
 
@@ -353,6 +363,8 @@ export class GitHubService {
       repoName: channel.githubRepoName ?? undefined,
       labels: channel.githubIssueLabels,
       autoCreate: channel.githubAutoCreate,
+      projectId: channel.githubProjectId ?? null,
+      autoAddToProject: channel.githubAutoAddToProject,
     };
   }
 

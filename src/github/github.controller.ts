@@ -94,6 +94,8 @@ export class GitHubController {
       dto.repoName,
       dto.labels ?? [],
       dto.autoCreate ?? false,
+      dto.projectId,
+      dto.autoAddToProject,
     );
 
     const appInfo = dto.appId ? ` (App ID: ${dto.appId})` : '';
