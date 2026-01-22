@@ -1,4 +1,5 @@
 <p align="center">
+  <img src="https://github.com/user-attachments/assets/66b6e204-1f23-4740-8e3e-2767d5476e07" alt="AURA Logo" width="278" height="231" /> 
   <h1 align="center">AURA API Backend</h1>
   <p align="center"><strong>Authentication & Resource Management API</strong></p>
 </p>
