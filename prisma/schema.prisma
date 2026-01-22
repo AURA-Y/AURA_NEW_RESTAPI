@@ -79,30 +79,33 @@ model JoinRequest {
 }
 
 model Room {
-  roomId               String      @id @db.VarChar(255)
-  roomTopic            String      @db.VarChar(255)
-  roomPassword         String?     @db.VarChar(50)
-  masterId             String      @db.Uuid
-  channelId            String      @db.Uuid
-  attendees            String[]    @default([])
+  roomId               String         @id @db.VarChar(255)
+  roomTopic            String         @db.VarChar(255)
+  roomPassword         String?        @db.VarChar(50)
+  masterId             String         @db.Uuid
+  channelId            String         @db.Uuid
+  attendees            String[]       @default([])
   token                String?
-  tags                 String[]    @default([])
-  participantUserIds   String[]    @default([]) @db.Uuid
-  roomShareLink        String      @unique(map: "UQ_9afb32bb37027f2d69429d50876") @default(dbgenerated("gen_random_uuid()")) @db.VarChar(255)
-  createdAt            DateTime    @default(now()) @db.Timestamptz(6)
-  uploadFileList       Json        @default("[]")
-  githubRepoOverride   String?     @db.VarChar(201)
-  githubLabelsOverride String[]    @default([])
+  tags                 String[]       @default([])
+  participantUserIds   String[]       @default([]) @db.Uuid
+  roomShareLink        String         @unique(map: "UQ_9afb32bb37027f2d69429d50876") @default(dbgenerated("gen_random_uuid()")) @db.VarChar(255)
+  createdAt            DateTime       @default(now()) @db.Timestamptz(6)
+  uploadFileList       Json           @default("[]")
+  githubRepoOverride   String?        @db.VarChar(201)
+  githubLabelsOverride String[]       @default([])
   referencedFiles      String?
-  expectedAttendees    Json?       @default("[]")
-  // 예약 관련 필드
-  scheduledAt          DateTime?   @db.Timestamptz(6)  // 예약된 시작 시간 (null = 즉시 생성)
-  duration             Int?                             // 예약된 진행 시간 (분)
-  status               RoomStatus  @default(ACTIVE)     // 회의 상태
-  calendarEventId      String?     @db.VarChar(255)     // Google Calendar 이벤트 ID
-  jobId                String?     @db.VarChar(255)     // BullMQ Job ID (취소용)
-  User                 User        @relation(fields: [masterId], references: [userId], onDelete: Cascade, onUpdate: NoAction, map: "FK_56edc8746a89b70d50816f6aaf3")
-  Channel              Channel     @relation(fields: [channelId], references: [channelId], onDelete: Cascade, onUpdate: NoAction, map: "FK_c3fb69a467978452fb2160f9dfa")
+  expectedAttendees    Json?          @default("[]")
+  calendarEventId      String?        @db.VarChar(255)
+  duration             Int?
+  jobId                String?        @db.VarChar(255)
+  scheduledAt          DateTime?      @db.Timestamptz(6)
+  status               RoomStatus     @default(ACTIVE)
+  parentRoomId         String?        @db.VarChar(255)
+  recurrenceEndDate    DateTime?      @db.Timestamptz(6)
+  recurrenceIndex      Int            @default(0)
+  recurrenceRule       RecurrenceRule @default(NONE)
+  User                 User           @relation(fields: [masterId], references: [userId], onDelete: Cascade, onUpdate: NoAction, map: "FK_56edc8746a89b70d50816f6aaf3")
+  Channel              Channel        @relation(fields: [channelId], references: [channelId], onDelete: Cascade, onUpdate: NoAction, map: "FK_c3fb69a467978452fb2160f9dfa")
 
   @@index([status])
   @@index([scheduledAt])
@@ -185,8 +188,16 @@ enum RoomReport_sharescope_enum {
 }
 
 enum RoomStatus {
-  SCHEDULED    // 예약됨 (아직 시작 안 함)
-  ACTIVE       // 진행 중 (즉시 생성 또는 예약 시간 도래)
-  ENDED        // 종료됨
-  CANCELLED    // 취소됨
+  SCHEDULED
+  ACTIVE
+  ENDED
+  CANCELLED
+}
+
+enum RecurrenceRule {
+  NONE
+  DAILY
+  WEEKLY
+  BIWEEKLY
+  MONTHLY
 }
