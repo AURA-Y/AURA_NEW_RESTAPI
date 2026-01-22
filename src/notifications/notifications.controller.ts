@@ -10,7 +10,7 @@ import {
 } from '@nestjs/common';
 import { IsString, IsNotEmpty, ValidateNested } from 'class-validator';
 import { Type } from 'class-transformer';
-import { NotificationsService, PushSubscription } from './notifications.service';
+import { NotificationsService, PushSubscriptionInput } from './notifications.service';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 
 class PushSubscriptionKeysDto {
@@ -59,7 +59,7 @@ export class NotificationsController {
 
     const result = await this.notificationsService.savePushSubscription(
       userId,
-      subscriptionDto as PushSubscription,
+      subscriptionDto as PushSubscriptionInput,
     );
 
     return result;
@@ -90,7 +90,7 @@ export class NotificationsController {
   @Get('push/status')
   async getPushStatus(@Request() req) {
     const userId = req.user.id;
-    const subscriptionCount = this.notificationsService.getSubscriptionCount(userId);
+    const subscriptionCount = await this.notificationsService.getSubscriptionCount(userId);
 
     return {
       userId,

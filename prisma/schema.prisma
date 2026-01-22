@@ -9,23 +9,24 @@ datasource db {
 }
 
 model User {
-  userId             String          @id @db.Uuid
-  email              String          @unique(map: "UQ_4a257d2c9837248d70640b3e36e") @db.VarChar(255)
-  userPassword       String          @db.VarChar(255)
-  nickName           String          @unique(map: "UQ_949dca0566481700b137756b7b6") @db.VarChar(100)
+  userId             String             @id @db.Uuid
+  email              String             @unique(map: "UQ_4a257d2c9837248d70640b3e36e") @db.VarChar(255)
+  userPassword       String             @db.VarChar(255)
+  nickName           String             @unique(map: "UQ_949dca0566481700b137756b7b6") @db.VarChar(100)
   googleAccessToken  String?
   googleRefreshToken String?
-  googleTokenExpiry  DateTime?       @db.Timestamptz(6)
-  createdAt          DateTime        @default(now()) @db.Timestamptz(6)
-  updatedAt          DateTime        @default(now()) @db.Timestamptz(6)
+  googleTokenExpiry  DateTime?          @db.Timestamptz(6)
+  createdAt          DateTime           @default(now()) @db.Timestamptz(6)
+  updatedAt          DateTime           @default(now()) @db.Timestamptz(6)
   profileImage       String?
   githubId           Int?
-  githubLinkedAt     DateTime?       @db.Timestamptz(6)
-  githubUsername     String?         @db.VarChar(39)
+  githubLinkedAt     DateTime?          @db.Timestamptz(6)
+  githubUsername     String?            @db.VarChar(39)
   Channel            Channel[]
   ChannelMember      ChannelMember[]
   JoinRequest        JoinRequest[]
   Room               Room[]
+  PushSubscription   PushSubscription[]
 
   @@index([githubUsername])
 }
@@ -159,6 +160,20 @@ model ActionItemIssue {
   @@index([assigneeUserId])
   @@index([reportId])
   @@index([roomId])
+}
+
+model PushSubscription {
+  id        String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  userId    String   @db.Uuid
+  endpoint  String   @unique
+  p256dh    String
+  auth      String
+  createdAt DateTime @default(now()) @db.Timestamptz(6)
+  updatedAt DateTime @default(now()) @updatedAt @db.Timestamptz(6)
+
+  user      User     @relation(fields: [userId], references: [userId], onDelete: Cascade)
+
+  @@index([userId])
 }
 
 enum ActionItemIssueState {

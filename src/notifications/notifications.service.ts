@@ -1,10 +1,11 @@
 import { Injectable, Logger } from '@nestjs/common';
 import * as webpush from 'web-push';
+import { PrismaService } from '../prisma/prisma.service';
 
 /**
- * Push 구독 정보
+ * Push 구독 정보 (API 요청/응답용)
  */
-export interface PushSubscription {
+export interface PushSubscriptionInput {
   endpoint: string;
   keys: {
     p256dh: string;
@@ -32,23 +33,11 @@ export interface PushPayload {
   }>;
 }
 
-/**
- * 사용자별 Push 구독 저장소 (메모리 기반)
- * 실제 운영에서는 Redis 또는 DB에 저장해야 함
- */
-interface UserPushSubscriptions {
-  [userId: string]: PushSubscription[];
-}
-
 @Injectable()
 export class NotificationsService {
   private readonly logger = new Logger(NotificationsService.name);
 
-  // 메모리 기반 구독 저장소 (서버 재시작 시 손실됨)
-  // TODO: Redis 또는 PostgreSQL로 마이그레이션
-  private subscriptions: UserPushSubscriptions = {};
-
-  constructor() {
+  constructor(private readonly prisma: PrismaService) {
     // VAPID 키 설정
     const vapidPublicKey = process.env.VAPID_PUBLIC_KEY;
     const vapidPrivateKey = process.env.VAPID_PRIVATE_KEY;
@@ -63,56 +52,78 @@ export class NotificationsService {
   }
 
   /**
-   * Push 구독 등록
+   * Push 구독 등록 (DB에 저장)
    */
   async savePushSubscription(
     userId: string,
-    subscription: PushSubscription,
+    subscription: PushSubscriptionInput,
   ): Promise<{ success: boolean; message: string }> {
-    if (!this.subscriptions[userId]) {
-      this.subscriptions[userId] = [];
+    try {
+      await this.prisma.pushSubscription.upsert({
+        where: { endpoint: subscription.endpoint },
+        create: {
+          userId,
+          endpoint: subscription.endpoint,
+          p256dh: subscription.keys.p256dh,
+          auth: subscription.keys.auth,
+        },
+        update: {
+          userId,
+          p256dh: subscription.keys.p256dh,
+          auth: subscription.keys.auth,
+        },
+      });
+
+      this.logger.log(`[Push] Saved subscription for user: ${userId}`);
+      return { success: true, message: 'Subscription saved' };
+    } catch (error) {
+      this.logger.error(`[Push] Failed to save subscription: ${error.message}`);
+      return { success: false, message: error.message };
     }
-
-    // 중복 구독 확인
-    const existingIndex = this.subscriptions[userId].findIndex(
-      (sub) => sub.endpoint === subscription.endpoint,
-    );
-
-    if (existingIndex >= 0) {
-      // 기존 구독 업데이트
-      this.subscriptions[userId][existingIndex] = subscription;
-      this.logger.log(`[Push] Updated subscription for user: ${userId}`);
-    } else {
-      // 새 구독 추가
-      this.subscriptions[userId].push(subscription);
-      this.logger.log(`[Push] Added new subscription for user: ${userId}`);
-    }
-
-    return { success: true, message: 'Subscription saved' };
   }
 
   /**
-   * Push 구독 삭제
+   * Push 구독 삭제 (DB에서 삭제)
    */
   async deletePushSubscription(
     userId: string,
     endpoint: string,
   ): Promise<{ success: boolean; message: string }> {
-    if (!this.subscriptions[userId]) {
-      return { success: false, message: 'No subscriptions found' };
+    try {
+      const deleted = await this.prisma.pushSubscription.deleteMany({
+        where: {
+          userId,
+          endpoint,
+        },
+      });
+
+      if (deleted.count > 0) {
+        this.logger.log(`[Push] Removed subscription for user: ${userId}`);
+        return { success: true, message: 'Subscription removed' };
+      }
+
+      return { success: false, message: 'Subscription not found' };
+    } catch (error) {
+      this.logger.error(`[Push] Failed to delete subscription: ${error.message}`);
+      return { success: false, message: error.message };
     }
+  }
 
-    const initialLength = this.subscriptions[userId].length;
-    this.subscriptions[userId] = this.subscriptions[userId].filter(
-      (sub) => sub.endpoint !== endpoint,
-    );
+  /**
+   * 특정 사용자의 모든 구독 조회
+   */
+  async getUserSubscriptions(userId: string): Promise<PushSubscriptionInput[]> {
+    const subscriptions = await this.prisma.pushSubscription.findMany({
+      where: { userId },
+    });
 
-    if (this.subscriptions[userId].length < initialLength) {
-      this.logger.log(`[Push] Removed subscription for user: ${userId}`);
-      return { success: true, message: 'Subscription removed' };
-    }
-
-    return { success: false, message: 'Subscription not found' };
+    return subscriptions.map((sub) => ({
+      endpoint: sub.endpoint,
+      keys: {
+        p256dh: sub.p256dh,
+        auth: sub.auth,
+      },
+    }));
   }
 
   /**
@@ -122,7 +133,7 @@ export class NotificationsService {
     sent: number;
     failed: number;
   }> {
-    const userSubscriptions = this.subscriptions[userId] || [];
+    const userSubscriptions = await this.getUserSubscriptions(userId);
 
     if (userSubscriptions.length === 0) {
       this.logger.debug(`[Push] No subscriptions for user: ${userId}`);
@@ -158,12 +169,15 @@ export class NotificationsService {
       }
     }
 
-    // 만료된 구독 제거
+    // 만료된 구독 DB에서 제거
     if (failedEndpoints.length > 0) {
-      this.subscriptions[userId] = this.subscriptions[userId].filter(
-        (sub) => !failedEndpoints.includes(sub.endpoint),
-      );
-      this.logger.log(`[Push] Removed ${failedEndpoints.length} expired subscriptions`);
+      await this.prisma.pushSubscription.deleteMany({
+        where: {
+          userId,
+          endpoint: { in: failedEndpoints },
+        },
+      });
+      this.logger.log(`[Push] Removed ${failedEndpoints.length} expired subscriptions from DB`);
     }
 
     return { sent, failed };
@@ -271,22 +285,24 @@ export class NotificationsService {
   /**
    * 사용자의 구독 개수 확인
    */
-  getSubscriptionCount(userId: string): number {
-    return (this.subscriptions[userId] || []).length;
+  async getSubscriptionCount(userId: string): Promise<number> {
+    return this.prisma.pushSubscription.count({
+      where: { userId },
+    });
   }
 
   /**
    * 전체 통계
    */
-  getStats(): { totalUsers: number; totalSubscriptions: number } {
-    const userIds = Object.keys(this.subscriptions);
-    const totalSubscriptions = userIds.reduce(
-      (sum, userId) => sum + this.subscriptions[userId].length,
-      0,
-    );
+  async getStats(): Promise<{ totalUsers: number; totalSubscriptions: number }> {
+    const totalSubscriptions = await this.prisma.pushSubscription.count();
+
+    const uniqueUsers = await this.prisma.pushSubscription.groupBy({
+      by: ['userId'],
+    });
 
     return {
-      totalUsers: userIds.length,
+      totalUsers: uniqueUsers.length,
       totalSubscriptions,
     };
   }
