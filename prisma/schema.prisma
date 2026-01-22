@@ -79,24 +79,36 @@ model JoinRequest {
 }
 
 model Room {
-  roomId               String   @id @db.VarChar(255)
-  roomTopic            String   @db.VarChar(255)
-  roomPassword         String?  @db.VarChar(50)
-  masterId             String   @db.Uuid
-  channelId            String   @db.Uuid
-  attendees            String[] @default([])
+  roomId               String         @id @db.VarChar(255)
+  roomTopic            String         @db.VarChar(255)
+  roomPassword         String?        @db.VarChar(50)
+  masterId             String         @db.Uuid
+  channelId            String         @db.Uuid
+  attendees            String[]       @default([])
   token                String?
-  tags                 String[] @default([])
-  participantUserIds   String[] @default([]) @db.Uuid
-  roomShareLink        String   @unique(map: "UQ_9afb32bb37027f2d69429d50876") @default(dbgenerated("gen_random_uuid()")) @db.VarChar(255)
-  createdAt            DateTime @default(now()) @db.Timestamptz(6)
-  uploadFileList       Json     @default("[]")
-  githubRepoOverride   String?  @db.VarChar(201)
-  githubLabelsOverride String[] @default([])
+  tags                 String[]       @default([])
+  participantUserIds   String[]       @default([]) @db.Uuid
+  roomShareLink        String         @unique(map: "UQ_9afb32bb37027f2d69429d50876") @default(dbgenerated("gen_random_uuid()")) @db.VarChar(255)
+  createdAt            DateTime       @default(now()) @db.Timestamptz(6)
+  uploadFileList       Json           @default("[]")
+  githubRepoOverride   String?        @db.VarChar(201)
+  githubLabelsOverride String[]       @default([])
   referencedFiles      String?
-  expectedAttendees    Json?    @default("[]")
-  User                 User     @relation(fields: [masterId], references: [userId], onDelete: Cascade, onUpdate: NoAction, map: "FK_56edc8746a89b70d50816f6aaf3")
-  Channel              Channel  @relation(fields: [channelId], references: [channelId], onDelete: Cascade, onUpdate: NoAction, map: "FK_c3fb69a467978452fb2160f9dfa")
+  expectedAttendees    Json?          @default("[]")
+  calendarEventId      String?        @db.VarChar(255)
+  duration             Int?
+  jobId                String?        @db.VarChar(255)
+  scheduledAt          DateTime?      @db.Timestamptz(6)
+  status               RoomStatus     @default(ACTIVE)
+  parentRoomId         String?        @db.VarChar(255)
+  recurrenceEndDate    DateTime?      @db.Timestamptz(6)
+  recurrenceIndex      Int            @default(0)
+  recurrenceRule       RecurrenceRule @default(NONE)
+  User                 User           @relation(fields: [masterId], references: [userId], onDelete: Cascade, onUpdate: NoAction, map: "FK_56edc8746a89b70d50816f6aaf3")
+  Channel              Channel        @relation(fields: [channelId], references: [channelId], onDelete: Cascade, onUpdate: NoAction, map: "FK_c3fb69a467978452fb2160f9dfa")
+
+  @@index([status])
+  @@index([scheduledAt])
 }
 
 model RoomReport {
@@ -173,4 +185,19 @@ enum RoomReport_sharescope_enum {
   TEAM
   CHANNEL
   PRIVATE
+}
+
+enum RoomStatus {
+  SCHEDULED
+  ACTIVE
+  ENDED
+  CANCELLED
+}
+
+enum RecurrenceRule {
+  NONE
+  DAILY
+  WEEKLY
+  BIWEEKLY
+  MONTHLY
 }

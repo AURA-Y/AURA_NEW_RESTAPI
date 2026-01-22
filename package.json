@@ -38,7 +38,8 @@
     "prisma": "^7.2.0",
     "reflect-metadata": "^0.1.13",
     "rxjs": "^7.8.1",
-    "typeorm": "^0.3.17"
+    "typeorm": "^0.3.17",
+    "web-push": "^3.6.7"
   },
   "devDependencies": {
     "@nestjs/cli": "^10.0.0",
@@ -47,6 +48,7 @@
     "@types/node": "^20.0.0",
     "@types/passport-jwt": "^3.0.9",
     "@types/passport-local": "^1.0.35",
+    "@types/web-push": "^3.6.4",
     "typescript": "^5.0.0"
   }
 }

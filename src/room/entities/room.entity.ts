@@ -73,6 +73,43 @@ export class Room {
     sourceRoomId?: string;  // 원본 회의 ID
   }>;
 
+  // 예약 관련 필드
+  @Column({ type: "timestamp with time zone", nullable: true })
+  scheduledAt: Date | null;  // 예약된 시작 시간 (null = 즉시 생성)
+
+  @Column({ type: "int", nullable: true })
+  duration: number | null;  // 예약된 진행 시간 (분)
+
+  @Column({
+    type: "enum",
+    enum: ["SCHEDULED", "ACTIVE", "ENDED", "CANCELLED"],
+    default: "ACTIVE"
+  })
+  status: "SCHEDULED" | "ACTIVE" | "ENDED" | "CANCELLED";
+
+  @Column({ type: "varchar", length: 255, nullable: true })
+  calendarEventId: string | null;  // Google Calendar 이벤트 ID
+
+  @Column({ type: "varchar", length: 255, nullable: true })
+  jobId: string | null;  // BullMQ Job ID (취소용)
+
+  // 반복 예약 관련 필드
+  @Column({
+    type: "enum",
+    enum: ["NONE", "DAILY", "WEEKLY", "BIWEEKLY", "MONTHLY"],
+    default: "NONE"
+  })
+  recurrenceRule: "NONE" | "DAILY" | "WEEKLY" | "BIWEEKLY" | "MONTHLY";
+
+  @Column({ type: "timestamp with time zone", nullable: true })
+  recurrenceEndDate: Date | null;  // 반복 종료일 (null = 무한 반복하지 않음)
+
+  @Column({ type: "varchar", length: 255, nullable: true })
+  parentRoomId: string | null;  // 반복 회의의 원본 roomId (시리즈 추적용)
+
+  @Column({ type: "int", default: 0 })
+  recurrenceIndex: number;  // 반복 회의 인덱스 (0 = 원본, 1, 2, 3... = 반복된 회의)
+
   @BeforeInsert()
   setDefaults() {
     if (!this.createdAt) {
@@ -92,6 +129,9 @@ export class Room {
     }
     if (!this.referencedFiles) {
       this.referencedFiles = [];
+    }
+    if (!this.status) {
+      this.status = "ACTIVE";
     }
   }
 
