@@ -16,10 +16,12 @@
 | Feature | Description |
 |---------|-------------|
 | **인증** | JWT 기반 회원가입/로그인 |
+| **Google OAuth** | 소셜 로그인 + 캘린더 연동 |
 | **사용자 관리** | 프로필 CRUD, 역할 관리 |
 | **채널 관리** | 팀/채널 생성, 멤버 초대 |
 | **파일 관리** | S3 업로드/다운로드 |
 | **회의 기록** | 회의록, 리포트 저장 |
+| **캘린더 연동** | Google Calendar 일정 등록/조회 |
 
 ---
 
@@ -79,6 +81,11 @@ AWS_ACCESS_KEY_ID=your-access-key
 AWS_SECRET_ACCESS_KEY=your-secret-key
 AWS_REGION=ap-northeast-2
 S3_BUCKET=aura-raw-data-bucket
+
+# Google OAuth (소셜 로그인 + 캘린더)
+GOOGLE_CLIENT_ID=your-google-client-id.apps.googleusercontent.com
+GOOGLE_CLIENT_SECRET=your-google-client-secret
+GOOGLE_AUTH_REDIRECT_URI=http://localhost:3000/auth/google/callback
 ```
 
 ### Database Setup
@@ -177,6 +184,23 @@ src/
 | `POST` | `/auth/login` | 로그인 | - |
 | `GET` | `/auth/profile` | 내 프로필 | JWT |
 | `PATCH` | `/auth/profile` | 프로필 수정 | JWT |
+| `DELETE` | `/auth/withdraw` | 회원 탈퇴 | JWT |
+
+### Google OAuth
+
+| Method | Endpoint | Description | Auth |
+|--------|----------|-------------|------|
+| `GET` | `/auth/google` | Google 로그인 URL 반환 | - |
+| `GET` | `/auth/google/callback` | OAuth 콜백 처리 | - |
+| `GET` | `/auth/google/status` | Google 연동 상태 확인 | JWT |
+
+### Calendar
+
+| Method | Endpoint | Description | Auth |
+|--------|----------|-------------|------|
+| `GET` | `/calendar/events` | 내 캘린더 일정 조회 | JWT |
+| `POST` | `/calendar/events` | 회의 일정 등록 | JWT |
+| `DELETE` | `/calendar/events/:eventId` | 일정 삭제 | JWT |
 
 #### POST /auth/signup
 
