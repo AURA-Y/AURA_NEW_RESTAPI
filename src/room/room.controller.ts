@@ -90,9 +90,12 @@ export class RoomController {
       // 회의 링크 URL 생성
       const meetingUrl = `https://aura.ai.kr/room/${room.roomId}`;
 
-      // 날짜와 시간 분리 (ISO 8601 형식에서 추출)
-      const dateStr = scheduledAt.toISOString().split('T')[0]; // YYYY-MM-DD
-      const timeStr = scheduledAt.toTimeString().slice(0, 5);  // HH:mm
+      // 날짜와 시간 분리 (KST 기준으로 변환)
+      // 서버가 UTC로 돌아가도 KST 시간대로 정확히 저장되도록 함
+      const kstOffset = 9 * 60 * 60 * 1000; // UTC+9
+      const kstDate = new Date(scheduledAt.getTime() + kstOffset);
+      const dateStr = kstDate.toISOString().split('T')[0]; // YYYY-MM-DD (KST)
+      const timeStr = kstDate.toISOString().split('T')[1].slice(0, 5); // HH:mm (KST)
 
       // 참석자 이메일 목록 조회 (expectedAttendees에서 추출)
       const attendeeEmails = scheduleRoomDto.expectedAttendees?.map(a => a.userId) || [];
