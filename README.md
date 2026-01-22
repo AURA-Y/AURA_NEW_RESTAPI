@@ -1,52 +1,92 @@
-# API Backend
+<p align="center">
+  <h1 align="center">AURA API Backend</h1>
+  <p align="center"><strong>Authentication & Resource Management API</strong></p>
+</p>
 
-사용자 인증 및 관리를 위한 NestJS REST API 서버
+---
 
-## 기능
+## Overview
 
-- 사용자 회원가입
-- 사용자 로그인
-- JWT 인증
-- 사용자 프로필 관리
+사용자 인증, 채널 관리, 파일 스토리지를 담당하는 NestJS REST API 서버입니다.
 
-## 기술 스택
+---
 
-- NestJS
-- TypeORM
-- PostgreSQL
-- JWT Authentication
-- Passport
+## Features
 
-## 환경 변수
+| Feature | Description |
+|---------|-------------|
+| **인증** | JWT 기반 회원가입/로그인 |
+| **사용자 관리** | 프로필 CRUD, 역할 관리 |
+| **채널 관리** | 팀/채널 생성, 멤버 초대 |
+| **파일 관리** | S3 업로드/다운로드 |
+| **회의 기록** | 회의록, 리포트 저장 |
 
-`.env` 파일을 생성하고 다음 변수를 설정하세요:
+---
+
+## Tech Stack
+
+| Category | Technology |
+|----------|------------|
+| **Framework** | NestJS |
+| **Language** | TypeScript |
+| **ORM** | TypeORM |
+| **Database** | PostgreSQL |
+| **Auth** | Passport JWT |
+| **Storage** | AWS S3 |
+| **Validation** | class-validator |
+
+---
+
+## Getting Started
+
+### Prerequisites
+
+- Node.js 18+ or Bun
+- PostgreSQL 15+
+
+### Installation
 
 ```bash
-# Server
-PORT=3002
-NODE_ENV=production
-
-# Database
-DB_HOST=your-postgres-host
-DB_PORT=5432
-DB_USERNAME=postgres
-DB_PASSWORD=your-db-password
-DB_NAME=aura
-DB_SSL=true
-
-# JWT
-JWT_SECRET=your-secret-key-change-this
-JWT_EXPIRES_IN=7d
+# Install dependencies
+bun install
+# or
+npm install
 ```
 
-## 로컬 개발
+### Environment Variables
 
-### 1. PostgreSQL 설치 및 실행
+`.env` 파일 생성:
+
+```env
+# Server
+PORT=3002
+NODE_ENV=development
+
+# Database
+DB_HOST=localhost
+DB_PORT=5432
+DB_USERNAME=postgres
+DB_PASSWORD=postgres
+DB_NAME=aura
+DB_SSL=false
+
+# JWT
+JWT_SECRET=your-super-secret-key-change-in-production
+JWT_EXPIRES_IN=7d
+
+# AWS S3
+AWS_ACCESS_KEY_ID=your-access-key
+AWS_SECRET_ACCESS_KEY=your-secret-key
+AWS_REGION=ap-northeast-2
+S3_BUCKET=aura-raw-data-bucket
+```
+
+### Database Setup
 
 ```bash
 # Docker로 PostgreSQL 실행
 docker run -d \
-  --name postgres \
+  --name aura-postgres \
   -e POSTGRES_USER=postgres \
   -e POSTGRES_PASSWORD=postgres \
   -e POSTGRES_DB=aura \
@@ -54,45 +94,180 @@ docker run -d \
   postgres:15-alpine
 ```
 
-### 2. 애플리케이션 실행
+### Development
 
 ```bash
-# 의존성 설치
-bun install
-
-# 개발 모드 실행
+# 개발 서버 실행
 bun run start:dev
+# or
+npm run start:dev
+```
 
-# 빌드
+서버: http://localhost:3002
+
+### Build & Production
+
+```bash
 bun run build
-
-# 프로덕션 모드 실행
 bun run start:prod
 ```
 
-## Docker 실행
+---
 
-### 이미지 빌드
+## Project Structure
 
-```bash
-docker build -t api-backend .
+```
+src/
+├── main.ts                 # Entry point
+├── app.module.ts           # Root module
+│
+├── auth/                   # 인증 모듈
+│   ├── auth.module.ts
+│   ├── auth.controller.ts
+│   ├── auth.service.ts
+│   ├── jwt.strategy.ts
+│   └── dto/
+│       ├── login.dto.ts
+│       └── signup.dto.ts
+│
+├── users/                  # 사용자 모듈
+│   ├── users.module.ts
+│   ├── users.controller.ts
+│   ├── users.service.ts
+│   └── entities/
+│       └── user.entity.ts
+│
+├── channels/               # 채널 모듈
+│   ├── channels.module.ts
+│   ├── channels.controller.ts
+│   ├── channels.service.ts
+│   └── entities/
+│       ├── channel.entity.ts
+│       └── channel-member.entity.ts
+│
+├── meetings/               # 회의 기록 모듈
+│   ├── meetings.module.ts
+│   ├── meetings.controller.ts
+│   └── entities/
+│       └── meeting.entity.ts
+│
+├── files/                  # 파일 관리 모듈
+│   ├── files.module.ts
+│   ├── files.controller.ts
+│   └── files.service.ts
+│
+└── common/                 # 공통 유틸리티
+    ├── guards/
+    │   └── jwt-auth.guard.ts
+    ├── decorators/
+    │   └── current-user.decorator.ts
+    └── filters/
+        └── http-exception.filter.ts
 ```
 
-### 컨테이너 실행
+---
+
+## API Endpoints
+
+### Auth
+
+| Method | Endpoint | Description | Auth |
+|--------|----------|-------------|------|
+| `POST` | `/auth/signup` | 회원가입 | - |
+| `POST` | `/auth/login` | 로그인 | - |
+| `GET` | `/auth/profile` | 내 프로필 | JWT |
+| `PATCH` | `/auth/profile` | 프로필 수정 | JWT |
+
+#### POST /auth/signup
+
+```json
+// Request
+{
+  "email": "user@example.com",
+  "password": "password123",
+  "name": "홍길동"
+}
+
+// Response
+{
+  "id": 1,
+  "email": "user@example.com",
+  "name": "홍길동",
+  "createdAt": "2024-01-01T00:00:00.000Z"
+}
+```
+
+#### POST /auth/login
+
+```json
+// Request
+{
+  "email": "user@example.com",
+  "password": "password123"
+}
+
+// Response
+{
+  "access_token": "eyJhbGciOiJIUzI1NiIs...",
+  "user": {
+    "id": 1,
+    "email": "user@example.com",
+    "name": "홍길동"
+  }
+}
+```
+
+### Channels
+
+| Method | Endpoint | Description | Auth |
+|--------|----------|-------------|------|
+| `GET` | `/channels` | 내 채널 목록 | JWT |
+| `POST` | `/channels` | 채널 생성 | JWT |
+| `GET` | `/channels/:id` | 채널 상세 | JWT |
+| `PATCH` | `/channels/:id` | 채널 수정 | JWT |
+| `DELETE` | `/channels/:id` | 채널 삭제 | JWT |
+| `POST` | `/channels/:id/members` | 멤버 초대 | JWT |
+
+### Files
+
+| Method | Endpoint | Description | Auth |
+|--------|----------|-------------|------|
+| `POST` | `/files/upload` | 파일 업로드 | JWT |
+| `GET` | `/files/:id` | 파일 다운로드 URL | JWT |
+| `DELETE` | `/files/:id` | 파일 삭제 | JWT |
+
+### Meetings
+
+| Method | Endpoint | Description | Auth |
+|--------|----------|-------------|------|
+| `GET` | `/meetings` | 회의 목록 | JWT |
+| `GET` | `/meetings/:id` | 회의 상세 | JWT |
+| `GET` | `/meetings/:id/report` | 회의록 조회 | JWT |
+
+---
+
+## Docker
+
+### Build
+
+```bash
+docker build -t aura-api-backend .
+```
+
+### Run
 
 ```bash
 docker run -p 3002:3002 \
-  -e DB_HOST=your-postgres-host \
+  -e DB_HOST=host.docker.internal \
   -e DB_PORT=5432 \
   -e DB_USERNAME=postgres \
-  -e DB_PASSWORD=your-password \
+  -e DB_PASSWORD=postgres \
   -e DB_NAME=aura \
-  -e DB_SSL=true \
   -e JWT_SECRET=your-secret \
-  api-backend
+  aura-api-backend
 ```
 
-## Docker Compose 예시
+### Docker Compose
 
 ```yaml
 version: '3.8'
@@ -102,6 +277,8 @@ services:
     image: postgres:15-alpine
     environment:
       POSTGRES_DB: aura
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
     ports:
       - "5432:5432"
     volumes:
@@ -114,6 +291,8 @@ services:
     environment:
       DB_HOST: postgres
       DB_PORT: 5432
+      DB_USERNAME: postgres
+      DB_PASSWORD: postgres
       DB_NAME: aura
       DB_SSL: false
       JWT_SECRET: your-secret-key
@@ -125,82 +304,39 @@ volumes:
   postgres_data:
 ```
 
-## API 엔드포인트
+---
 
-### POST /auth/signup
-회원가입
+## Scripts
 
-**Request:**
-```json
-{
-  "email": "user@example.com",
-  "password": "password123",
-  "name": "User Name"
-}
-```
+| Command | Description |
+|---------|-------------|
+| `npm run start:dev` | 개발 서버 (hot reload) |
+| `npm run build` | 프로덕션 빌드 |
+| `npm run start:prod` | 프로덕션 서버 |
+| `npm run lint` | ESLint 실행 |
+| `npm run test` | 테스트 실행 |
 
-### POST /auth/login
-로그인
+---
 
-**Request:**
-```json
-{
-  "email": "user@example.com",
-  "password": "password123"
-}
-```
+## Security Notes
 
-**Response:**
-```json
-{
-  "access_token": "eyJhbGc...",
-  "user": {
-    "id": 1,
-    "email": "user@example.com",
-    "name": "User Name"
-  }
-}
-```
+- Production에서 `JWT_SECRET`은 반드시 강력한 랜덤 값 사용
+- `DB_SSL=true`로 데이터베이스 연결 암호화
+- 관리형 DB 서비스 (RDS) 사용 권장
 
-### GET /auth/profile
-프로필 조회 (인증 필요)
+---
 
-**Headers:**
-```
-Authorization: Bearer {access_token}
-```
+## Related Services
 
-**Response:**
-```json
-{
-  "id": 1,
-  "email": "user@example.com",
-  "name": "User Name"
-}
-```
+| Service | Description | Port |
+|---------|-------------|------|
+| **AURA_FRONT** | Next.js Frontend | 3000 |
+| **livekit-backend** | LiveKit Agent | 3001 |
+| **api-backend** (this) | REST API | 3002 |
+| **AURA_RAG** | RAG Server | 8000 |
 
-## 배포
+---
 
-### AWS/GCP/Azure 등에 배포
+## License
 
-1. Docker 이미지 빌드 및 푸시
-```bash
-docker build -t your-registry/api-backend:latest .
-docker push your-registry/api-backend:latest
-```
-
-2. 서버에서 실행
-```bash
-docker pull your-registry/api-backend:latest
-docker run -d \
-  --name api-backend \
-  -p 3002:3002 \
-  --env-file .env \
-  your-registry/api-backend:latest
-```
-
-## 주의사항
-
-- Production 환경에서는 반드시 `.env` 파일의 `JWT_SECRET`을 강력한 값으로 변경 필요
-- `DB_SSL=true`로 설정하여 데이터베이스 연결 보안을 강화하세요
-- PostgreSQL은 별도의 서버나 관리형 데이터베이스 서비스 사용을 권장합니다
+Private
