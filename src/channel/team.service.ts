@@ -19,7 +19,7 @@ export class TeamService {
   ) {}
 
   /**
-   * 팀 생성 (채널 소유자 또는 관리자만 가능)
+   * 팀 생성 (채널 소유자만 가능)
    */
   async createTeam(createTeamDto: CreateTeamDto, userId: string) {
     const { teamName, channelId } = createTeamDto;
@@ -33,7 +33,7 @@ export class TeamService {
       throw new NotFoundException('Channel not found');
     }
 
-    // 요청자가 채널의 OWNER 또는 ADMIN인지 확인
+    // 요청자가 채널의 OWNER인지 확인
     const member = await this.channelMemberRepository.findOne({
       where: {
         channelId,
@@ -41,8 +41,8 @@ export class TeamService {
       }
     });
 
-    if (!member || (member.role !== ChannelRole.OWNER && member.role !== ChannelRole.ADMIN)) {
-      throw new ForbiddenException('Only channel owner or admin can create teams');
+    if (!member || member.role !== ChannelRole.OWNER) {
+      throw new ForbiddenException('Only channel owner can create teams');
     }
 
     // 팀 생성
@@ -118,7 +118,7 @@ export class TeamService {
   }
 
   /**
-   * 팀 수정 (채널 소유자 또는 관리자만 가능)
+   * 팀 수정 (채널 소유자만 가능)
    */
   async updateTeam(teamId: string, updateTeamDto: UpdateTeamDto, userId: string) {
     // 팀 존재 확인
@@ -131,7 +131,7 @@ export class TeamService {
       throw new NotFoundException('Team not found');
     }
 
-    // 요청자가 채널의 OWNER 또는 ADMIN인지 확인
+    // 요청자가 채널의 OWNER인지 확인
     const member = await this.channelMemberRepository.findOne({
       where: {
         channelId: team.channelId,
@@ -139,8 +139,8 @@ export class TeamService {
       }
     });
 
-    if (!member || (member.role !== ChannelRole.OWNER && member.role !== ChannelRole.ADMIN)) {
-      throw new ForbiddenException('Only channel owner or admin can update teams');
+    if (!member || member.role !== ChannelRole.OWNER) {
+      throw new ForbiddenException('Only channel owner can update teams');
     }
 
     // 팀 업데이트
@@ -155,7 +155,7 @@ export class TeamService {
   }
 
   /**
-   * 팀 삭제 (채널 소유자 또는 관리자만 가능)
+   * 팀 삭제 (채널 소유자만 가능)
    */
   async deleteTeam(teamId: string, userId: string) {
     // 팀 존재 확인
@@ -167,7 +167,7 @@ export class TeamService {
       throw new NotFoundException('Team not found');
     }
 
-    // 요청자가 채널의 OWNER 또는 ADMIN인지 확인
+    // 요청자가 채널의 OWNER인지 확인
     const member = await this.channelMemberRepository.findOne({
       where: {
         channelId: team.channelId,
@@ -175,8 +175,8 @@ export class TeamService {
       }
     });
 
-    if (!member || (member.role !== ChannelRole.OWNER && member.role !== ChannelRole.ADMIN)) {
-      throw new ForbiddenException('Only channel owner or admin can delete teams');
+    if (!member || member.role !== ChannelRole.OWNER) {
+      throw new ForbiddenException('Only channel owner can delete teams');
     }
 
     // 팀 삭제
@@ -186,7 +186,7 @@ export class TeamService {
   }
 
   /**
-   * 팀에 멤버 할당 (채널 소유자 또는 관리자만 가능)
+   * 팀에 멤버 할당 (OWNER 또는 해당 팀에 속한 ADMIN만 가능)
    */
   async assignMemberToTeam(teamId: string, targetUserId: string, requestUserId: string) {
     // 팀 존재 확인
@@ -198,7 +198,7 @@ export class TeamService {
       throw new NotFoundException('Team not found');
     }
 
-    // 요청자가 채널의 OWNER 또는 ADMIN인지 확인
+    // 요청자 정보 확인
     const requesterMember = await this.channelMemberRepository.findOne({
       where: {
         channelId: team.channelId,
@@ -206,8 +206,16 @@ export class TeamService {
       }
     });
 
-    if (!requesterMember || (requesterMember.role !== ChannelRole.OWNER && requesterMember.role !== ChannelRole.ADMIN)) {
-      throw new ForbiddenException('Only channel owner or admin can assign members to teams');
+    if (!requesterMember) {
+      throw new ForbiddenException('You are not a member of this channel');
+    }
+
+    // OWNER는 항상 가능, ADMIN은 자기 팀에서만 가능
+    const isOwner = requesterMember.role === ChannelRole.OWNER;
+    const isAdminInTeam = requesterMember.role === ChannelRole.ADMIN && requesterMember.teamId === teamId;
+
+    if (!isOwner && !isAdminInTeam) {
+      throw new ForbiddenException('Only channel owner or admin of this team can assign members');
     }
 
     // 대상 사용자가 채널 멤버인지 확인
@@ -223,8 +231,7 @@ export class TeamService {
     }
 
     // ADMIN은 다른 ADMIN이나 OWNER를 팀에 할당할 수 없음
-    if (requesterMember.role === ChannelRole.ADMIN && 
-        (targetMember.role === ChannelRole.ADMIN || targetMember.role === ChannelRole.OWNER)) {
+    if (!isOwner && (targetMember.role === ChannelRole.ADMIN || targetMember.role === ChannelRole.OWNER)) {
       throw new ForbiddenException('Admin cannot assign other admins or owner to teams');
     }
 
@@ -243,7 +250,7 @@ export class TeamService {
   }
 
   /**
-   * 팀에서 멤버 제거 (채널 소유자 또는 관리자만 가능)
+   * 팀에서 멤버 제거 (OWNER 또는 해당 팀에 속한 ADMIN만 가능)
    */
   async removeMemberFromTeam(teamId: string, targetUserId: string, requestUserId: string) {
     // 팀 존재 확인
@@ -255,7 +262,7 @@ export class TeamService {
       throw new NotFoundException('Team not found');
     }
 
-    // 요청자가 채널의 OWNER 또는 ADMIN인지 확인
+    // 요청자 정보 확인
     const requesterMember = await this.channelMemberRepository.findOne({
       where: {
         channelId: team.channelId,
@@ -263,8 +270,16 @@ export class TeamService {
       }
     });
 
-    if (!requesterMember || (requesterMember.role !== ChannelRole.OWNER && requesterMember.role !== ChannelRole.ADMIN)) {
-      throw new ForbiddenException('Only channel owner or admin can remove members from teams');
+    if (!requesterMember) {
+      throw new ForbiddenException('You are not a member of this channel');
+    }
+
+    // OWNER는 항상 가능, ADMIN은 자기 팀에서만 가능
+    const isOwner = requesterMember.role === ChannelRole.OWNER;
+    const isAdminInTeam = requesterMember.role === ChannelRole.ADMIN && requesterMember.teamId === teamId;
+
+    if (!isOwner && !isAdminInTeam) {
+      throw new ForbiddenException('Only channel owner or admin of this team can remove members');
     }
 
     // 팀에서 멤버 제거 (teamId를 null로 설정)
@@ -280,8 +295,7 @@ export class TeamService {
     }
 
     // ADMIN은 다른 ADMIN이나 OWNER를 팀에서 제거할 수 없음
-    if (requesterMember.role === ChannelRole.ADMIN && 
-        (targetMember.role === ChannelRole.ADMIN || targetMember.role === ChannelRole.OWNER)) {
+    if (!isOwner && (targetMember.role === ChannelRole.ADMIN || targetMember.role === ChannelRole.OWNER)) {
       throw new ForbiddenException('Admin cannot remove other admins or owner from teams');
     }
 
