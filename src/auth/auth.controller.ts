@@ -29,15 +29,15 @@ export class AuthController {
   constructor(private readonly authService: AuthService) {}
 
   /**
-   * 회원가입
+   * 회원가입 (비활성화)
    * POST /auth/register
    */
   @Post('register')
-  @HttpCode(HttpStatus.CREATED)
+  @HttpCode(HttpStatus.FORBIDDEN)
   async register(
     @Body(ValidationPipe) registerDto: RegisterDto,
-  ): Promise<AuthResponseDto> {
-    return this.authService.register(registerDto);
+  ): Promise<{ message: string }> {
+    return { message: '회원가입이 비활성화되었습니다.' };
   }
 
   /**
