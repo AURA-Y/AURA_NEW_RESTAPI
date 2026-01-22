@@ -296,8 +296,9 @@ export class RoomService {
       const now = new Date();
       const diffMinutes = (newScheduledAt.getTime() - now.getTime()) / (1000 * 60);
 
-      if (diffMinutes <= 5) {
-        throw new ForbiddenException("시작 시간은 현재로부터 5분 이후여야 합니다");
+      // TODO: 운영 환경에서는 5분으로 복원 필요
+      if (diffMinutes <= 1) {  // 테스트용: 1분 (원래 5분)
+        throw new ForbiddenException("시작 시간은 현재로부터 1분 이후여야 합니다");
       }
 
       room.scheduledAt = newScheduledAt;
@@ -365,8 +366,9 @@ export class RoomService {
       const scheduledAt = new Date(room.scheduledAt);
       const diffMinutes = (scheduledAt.getTime() - now.getTime()) / (1000 * 60);
 
-      // 5분 전부터 입장 가능
-      if (diffMinutes <= 5) {
+      // TODO: 운영 환경에서는 5분으로 복원 필요
+      // 1분 전부터 입장 가능 (테스트용, 원래 5분)
+      if (diffMinutes <= 1) {
         // 상태를 ACTIVE로 변경
         room.status = "ACTIVE";
         await this.roomRepository.save(room);

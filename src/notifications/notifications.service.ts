@@ -145,11 +145,15 @@ export class NotificationsService {
         sent++;
       } catch (error: any) {
         failed++;
-        this.logger.error(`[Push] Failed to send to ${userId}: ${error.message}`);
+        const statusCode = error.statusCode || 'unknown';
+        this.logger.error(
+          `[Push] Failed to send to ${userId}: ${error.message} (status: ${statusCode})`,
+        );
 
-        // 410 Gone 또는 404 Not Found면 구독 제거
-        if (error.statusCode === 410 || error.statusCode === 404) {
+        // 410 Gone, 404 Not Found, 401 Unauthorized면 구독 제거
+        if ([410, 404, 401, 403].includes(error.statusCode)) {
           failedEndpoints.push(subscription.endpoint);
+          this.logger.warn(`[Push] Removing invalid subscription for ${userId} (status: ${statusCode})`);
         }
       }
     }

@@ -8,18 +8,34 @@ import {
   Request,
   Logger,
 } from '@nestjs/common';
+import { IsString, IsNotEmpty, ValidateNested } from 'class-validator';
+import { Type } from 'class-transformer';
 import { NotificationsService, PushSubscription } from './notifications.service';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 
+class PushSubscriptionKeysDto {
+  @IsString()
+  @IsNotEmpty()
+  p256dh: string;
+
+  @IsString()
+  @IsNotEmpty()
+  auth: string;
+}
+
 class PushSubscriptionDto {
+  @IsString()
+  @IsNotEmpty()
   endpoint: string;
-  keys: {
-    p256dh: string;
-    auth: string;
-  };
+
+  @ValidateNested()
+  @Type(() => PushSubscriptionKeysDto)
+  keys: PushSubscriptionKeysDto;
 }
 
 class UnsubscribeDto {
+  @IsString()
+  @IsNotEmpty()
   endpoint: string;
 }
 
