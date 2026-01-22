@@ -11,6 +11,8 @@ import { RoomReport } from "./entities/room-report.entity";
 import { ChannelMember } from "../channel/entities/channel-member.entity";
 import { Channel } from "../channel/entities/channel.entity";
 import { CreateRoomDto } from "./dto/create-room.dto";
+import { ScheduleRoomDto } from "./dto/schedule-room.dto";
+import { UpdateScheduleRoomDto } from "./dto/update-schedule-room.dto";
 
 @Injectable()
 export class RoomService {
@@ -52,8 +54,350 @@ export class RoomService {
       tags: data.tags || [],
       uploadFileList: data.uploadFileList || [],
       referencedFiles: data.referencedFiles || [],
+      status: "ACTIVE",
     });
     return this.roomRepository.save(room);
+  }
+
+  /**
+   * 예약 회의 생성 (SCHEDULED 상태로 저장)
+   * 반복 예약인 경우 첫 번째 회의만 생성하고, 이후 회의는 onStart 콜백에서 자동 생성
+   */
+  async createScheduledRoom(data: ScheduleRoomDto): Promise<Room> {
+    // roomId 생성: scheduled-{timestamp}-{random}
+    const timestamp = Date.now();
+    const random = Math.random().toString(36).substring(2, 8);
+    const roomId = `scheduled-${timestamp}-${random}`;
+
+    const room = this.roomRepository.create({
+      roomId,
+      roomTopic: data.roomTopic,
+      masterId: data.masterId,
+      channelId: data.channelId,
+      participantUserIds: data.participantUserIds || [],
+      expectedAttendees: data.expectedAttendees || [],
+      roomShareLink: this.generateShareLink(roomId),
+      attendees: [],
+      tags: data.tags || [],
+      uploadFileList: data.uploadFileList || [],
+      referencedFiles: data.referencedFiles || [],
+      // 예약 관련 필드
+      scheduledAt: new Date(data.scheduledAt),
+      duration: data.duration,
+      status: "SCHEDULED",
+      // 반복 예약 필드
+      recurrenceRule: data.recurrenceRule || "NONE",
+      recurrenceEndDate: data.recurrenceEndDate ? new Date(data.recurrenceEndDate) : null,
+      parentRoomId: null,  // 원본 회의이므로 null
+      recurrenceIndex: 0,  // 첫 번째 회의
+    });
+
+    return this.roomRepository.save(room);
+  }
+
+  /**
+   * 반복 회의의 다음 인스턴스 생성
+   * @param parentRoom 원본 회의 (또는 이전 인스턴스)
+   * @returns 새로 생성된 다음 회의
+   */
+  async createNextRecurringRoom(parentRoom: Room): Promise<Room | null> {
+    // 반복 규칙 확인
+    if (parentRoom.recurrenceRule === "NONE") {
+      return null;
+    }
+
+    // 다음 예약 시간 계산
+    const nextScheduledAt = this.calculateNextScheduledAt(
+      parentRoom.scheduledAt,
+      parentRoom.recurrenceRule,
+    );
+
+    // 반복 종료일 확인
+    if (parentRoom.recurrenceEndDate && nextScheduledAt > parentRoom.recurrenceEndDate) {
+      this.logger.log(`[반복 회의] 종료일 도달: ${parentRoom.roomId}`);
+      return null;
+    }
+
+    // 원본 roomId 결정 (시리즈 추적용)
+    const originalRoomId = parentRoom.parentRoomId || parentRoom.roomId;
+
+    // 새 roomId 생성
+    const timestamp = Date.now();
+    const random = Math.random().toString(36).substring(2, 8);
+    const roomId = `recurring-${timestamp}-${random}`;
+
+    // 다음 회의 생성
+    const nextRoom = this.roomRepository.create({
+      roomId,
+      roomTopic: parentRoom.roomTopic,
+      masterId: parentRoom.masterId,
+      channelId: parentRoom.channelId,
+      participantUserIds: parentRoom.participantUserIds || [],
+      expectedAttendees: parentRoom.expectedAttendees || [],
+      roomShareLink: this.generateShareLink(roomId),
+      attendees: [],
+      tags: parentRoom.tags || [],
+      uploadFileList: [],  // 파일은 새로 업로드해야 함
+      referencedFiles: [],
+      scheduledAt: nextScheduledAt,
+      duration: parentRoom.duration,
+      status: "SCHEDULED",
+      recurrenceRule: parentRoom.recurrenceRule,
+      recurrenceEndDate: parentRoom.recurrenceEndDate,
+      parentRoomId: originalRoomId,
+      recurrenceIndex: parentRoom.recurrenceIndex + 1,
+    });
+
+    const savedRoom = await this.roomRepository.save(nextRoom);
+    this.logger.log(`[반복 회의] 다음 회의 생성: ${savedRoom.roomId}, 예약 시간: ${nextScheduledAt.toISOString()}`);
+
+    return savedRoom;
+  }
+
+  /**
+   * 다음 예약 시간 계산
+   */
+  private calculateNextScheduledAt(
+    currentScheduledAt: Date,
+    recurrenceRule: string,
+  ): Date {
+    const next = new Date(currentScheduledAt);
+
+    switch (recurrenceRule) {
+      case "DAILY":
+        next.setDate(next.getDate() + 1);
+        break;
+      case "WEEKLY":
+        next.setDate(next.getDate() + 7);
+        break;
+      case "BIWEEKLY":
+        next.setDate(next.getDate() + 14);
+        break;
+      case "MONTHLY":
+        next.setMonth(next.getMonth() + 1);
+        break;
+      default:
+        // NONE 또는 알 수 없는 규칙
+        break;
+    }
+
+    return next;
+  }
+
+  /**
+   * 반복 회의 시리즈 전체 취소
+   */
+  async cancelRecurringSeries(parentRoomId: string, userId: string): Promise<number> {
+    // 권한 확인을 위해 원본 회의 조회
+    const parentRoom = await this.getRoomById(parentRoomId);
+    if (parentRoom.masterId !== userId) {
+      throw new ForbiddenException("반복 회의 시리즈를 취소할 권한이 없습니다");
+    }
+
+    // 시리즈의 모든 SCHEDULED 회의 취소
+    const result = await this.roomRepository
+      .createQueryBuilder()
+      .update(Room)
+      .set({ status: "CANCELLED" })
+      .where("status = :status", { status: "SCHEDULED" })
+      .andWhere(
+        "(roomId = :parentRoomId OR parentRoomId = :parentRoomId)",
+        { parentRoomId }
+      )
+      .execute();
+
+    this.logger.log(`[반복 회의] 시리즈 취소: ${result.affected}개 회의 취소됨`);
+    return result.affected || 0;
+  }
+
+  /**
+   * 예약 정보 업데이트 (jobId, calendarEventId 저장)
+   */
+  async updateSchedulingInfo(roomId: string, info: {
+    jobId?: string;
+    calendarEventId?: string;
+  }): Promise<void> {
+    await this.roomRepository.update({ roomId }, info);
+  }
+
+  /**
+   * 회의 상태 업데이트
+   */
+  async updateRoomStatus(roomId: string, status: "SCHEDULED" | "ACTIVE" | "ENDED" | "CANCELLED"): Promise<void> {
+    await this.roomRepository.update({ roomId }, { status });
+  }
+
+  /**
+   * 예약된 회의 목록 조회 (특정 사용자)
+   */
+  async getScheduledRooms(userId: string, channelId?: string): Promise<Room[]> {
+    const queryBuilder = this.roomRepository
+      .createQueryBuilder("room")
+      .leftJoinAndSelect("room.master", "master")
+      .leftJoinAndSelect("room.channel", "channel")
+      .where("room.status = :status", { status: "SCHEDULED" })
+      .andWhere(
+        "(room.masterId = :userId OR :userId = ANY(room.participantUserIds))",
+        { userId }
+      );
+
+    if (channelId) {
+      queryBuilder.andWhere("room.channelId = :channelId", { channelId });
+    }
+
+    return queryBuilder
+      .orderBy("room.scheduledAt", "ASC")
+      .getMany();
+  }
+
+  /**
+   * 예약 취소
+   */
+  async cancelScheduledRoom(roomId: string, userId: string): Promise<Room> {
+    const room = await this.getRoomById(roomId);
+
+    // 권한 확인: 방 생성자만 취소 가능
+    if (room.masterId !== userId) {
+      throw new ForbiddenException("예약을 취소할 권한이 없습니다");
+    }
+
+    // SCHEDULED 상태인지 확인
+    if (room.status !== "SCHEDULED") {
+      throw new ForbiddenException("예약된 회의만 취소할 수 있습니다");
+    }
+
+    room.status = "CANCELLED";
+    return this.roomRepository.save(room);
+  }
+
+  /**
+   * 예약된 회의 수정
+   */
+  async updateScheduledRoom(
+    roomId: string,
+    userId: string,
+    data: UpdateScheduleRoomDto,
+  ): Promise<Room> {
+    const room = await this.getRoomById(roomId);
+
+    // 권한 확인: 방 생성자만 수정 가능
+    if (room.masterId !== userId) {
+      throw new ForbiddenException("예약을 수정할 권한이 없습니다");
+    }
+
+    // SCHEDULED 상태인지 확인
+    if (room.status !== "SCHEDULED") {
+      throw new ForbiddenException("예약된 회의만 수정할 수 있습니다");
+    }
+
+    // 새 시작 시간 검증 (5분 이후인지)
+    if (data.scheduledAt) {
+      const newScheduledAt = new Date(data.scheduledAt);
+      const now = new Date();
+      const diffMinutes = (newScheduledAt.getTime() - now.getTime()) / (1000 * 60);
+
+      if (diffMinutes <= 5) {
+        throw new ForbiddenException("시작 시간은 현재로부터 5분 이후여야 합니다");
+      }
+
+      room.scheduledAt = newScheduledAt;
+    }
+
+    // 회의 주제 업데이트
+    if (data.roomTopic) {
+      room.roomTopic = data.roomTopic;
+    }
+
+    // 소요 시간 업데이트
+    if (data.duration !== undefined) {
+      room.duration = data.duration;
+    }
+
+    return this.roomRepository.save(room);
+  }
+
+  /**
+   * 예약된 회의 조기 입장 처리
+   * - 5분 전부터 입장 가능
+   * - 입장 시 상태를 ACTIVE로 변경하고 스케줄러 Job 취소
+   */
+  async handleEarlyEntry(roomId: string, userId: string): Promise<{
+    canEnter: boolean;
+    room: Room;
+    minutesUntilStart?: number;
+    message: string;
+  }> {
+    const room = await this.getRoomById(roomId);
+
+    // 접근 권한 확인
+    const hasAccess = await this.checkRoomAccess(roomId, userId);
+    if (!hasAccess) {
+      return {
+        canEnter: false,
+        room,
+        message: "이 회의에 접근할 권한이 없습니다",
+      };
+    }
+
+    // 이미 활성화된 회의인 경우
+    if (room.status === "ACTIVE") {
+      return {
+        canEnter: true,
+        room,
+        message: "회의가 이미 진행 중입니다",
+      };
+    }
+
+    // 종료되거나 취소된 회의인 경우
+    if (room.status === "ENDED" || room.status === "CANCELLED") {
+      return {
+        canEnter: false,
+        room,
+        message: room.status === "ENDED"
+          ? "이미 종료된 회의입니다"
+          : "취소된 회의입니다",
+      };
+    }
+
+    // SCHEDULED 상태인 경우 시간 확인
+    if (room.status === "SCHEDULED" && room.scheduledAt) {
+      const now = new Date();
+      const scheduledAt = new Date(room.scheduledAt);
+      const diffMinutes = (scheduledAt.getTime() - now.getTime()) / (1000 * 60);
+
+      // 5분 전부터 입장 가능
+      if (diffMinutes <= 5) {
+        // 상태를 ACTIVE로 변경
+        room.status = "ACTIVE";
+        await this.roomRepository.save(room);
+
+        this.logger.log(`[조기 입장] 회의 활성화: ${roomId}, 남은 시간: ${Math.round(diffMinutes)}분`);
+
+        return {
+          canEnter: true,
+          room,
+          minutesUntilStart: Math.max(0, Math.round(diffMinutes)),
+          message: diffMinutes > 0
+            ? `회의 시작 ${Math.round(diffMinutes)}분 전입니다. 입장이 허용됩니다.`
+            : "회의가 시작되었습니다",
+        };
+      }
+
+      // 아직 입장 불가
+      return {
+        canEnter: false,
+        room,
+        minutesUntilStart: Math.round(diffMinutes),
+        message: `아직 회의 시간이 아닙니다. ${Math.round(diffMinutes)}분 후에 시작됩니다.`,
+      };
+    }
+
+    // 기타 상태 (예약되지 않은 즉시 생성 회의)
+    return {
+      canEnter: true,
+      room,
+      message: "회의에 입장할 수 있습니다",
+    };
   }
 
   async getAllRooms(): Promise<Room[]> {

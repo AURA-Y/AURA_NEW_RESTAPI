@@ -25,6 +25,12 @@ import { SecretsModule } from './secrets/secrets.module';
 import { EncryptionModule } from './encryption/encryption.module';
 import { GitHubModule } from './github/github.module';
 
+// 회의 예약 스케줄러 모듈
+import { SchedulerModule } from './scheduler/scheduler.module';
+
+// Push 알림 모듈
+import { NotificationsModule } from './notifications/notifications.module';
+
 
 @Module({
   imports: [
@@ -63,6 +69,7 @@ import { GitHubModule } from './github/github.module';
     PrismaModule,
     SecretsModule,
     EncryptionModule,
+    SchedulerModule,
 
     // 기존 모듈
     AuthModule,
@@ -75,6 +82,9 @@ import { GitHubModule } from './github/github.module';
 
     // GitHub 모듈
     GitHubModule,
+
+    // Push 알림 모듈
+    NotificationsModule,
   ],
   controllers: [HealthController],
 })

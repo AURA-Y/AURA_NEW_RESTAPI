@@ -1,4 +1,4 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, Logger, Optional } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository, In } from 'typeorm';
 import { Subject } from 'rxjs';
@@ -6,6 +6,7 @@ import { User } from '../auth/entities/user.entity';
 import { Room } from '../room/entities/room.entity';
 import { RoomReport } from '../room/entities/room-report.entity';
 import { ReportsService } from '../reports/reports.service';
+import { NotificationsService } from '../notifications/notifications.service';
 
 export interface NotificationEvent {
   type: string;
@@ -14,6 +15,7 @@ export interface NotificationEvent {
 
 @Injectable()
 export class SseService {
+  private readonly logger = new Logger(SseService.name);
   // userId -> Subject 매핑 (SSE 연결 관리)
   private clients: Map<string, Subject<NotificationEvent>> = new Map();
 
@@ -25,6 +27,7 @@ export class SseService {
     @InjectRepository(RoomReport)
     private roomReportRepository: Repository<RoomReport>,
     private reportsService: ReportsService,
+    @Optional() private notificationsService?: NotificationsService,
   ) {}
 
   // SSE 연결 등록
@@ -397,6 +400,260 @@ export class SseService {
     }
 
     console.log(`[SSE] Report complete notification - notified: ${notified.length}, failed: ${failed.length}`);
+    return { notified, failed };
+  }
+
+  // ============================================================================
+  // 예약 회의 알림 (Phase 3)
+  // ============================================================================
+
+  /**
+   * 회의 예약 알림 (예약 직후 참여자들에게 전송)
+   */
+  async handleMeetingScheduled(payload: {
+    roomId: string;
+    roomTopic: string;
+    channelId: string;
+    masterId: string;
+    masterNickName: string;
+    participantUserIds: string[];
+    scheduledAt: string;
+  }): Promise<{ notified: string[]; failed: string[] }> {
+    const { roomId, roomTopic, channelId, masterId, masterNickName, participantUserIds, scheduledAt } = payload;
+
+    console.log(`[SSE] ========== handleMeetingScheduled 시작 ==========`);
+    console.log(`[SSE] roomId: ${roomId}, scheduledAt: ${scheduledAt}`);
+
+    const notified: string[] = [];
+    const failed: string[] = [];
+
+    if (!participantUserIds || participantUserIds.length === 0) {
+      console.log(`[SSE] 전체 공개 예약 - 개별 알림 스킵`);
+      return { notified, failed };
+    }
+
+    const event: NotificationEvent = {
+      type: 'meeting_scheduled',
+      data: {
+        roomId,
+        meetingTopic: roomTopic,
+        channelId,
+        scheduledBy: masterNickName,
+        scheduledAt,
+        createdAt: new Date().toISOString(),
+      },
+    };
+
+    for (const userId of participantUserIds) {
+      if (userId === masterId) continue;
+      const sent = this.sendToUser(userId, event);
+      if (sent) {
+        notified.push(userId);
+      } else {
+        failed.push(userId);
+      }
+    }
+
+    console.log(`[SSE] Meeting scheduled notification - notified: ${notified.length}, failed: ${failed.length}`);
+    return { notified, failed };
+  }
+
+  /**
+   * 회의 시작 전 리마인더 알림 (30분 전, 5분 전)
+   */
+  async handleMeetingReminder(payload: {
+    roomId: string;
+    roomTopic: string;
+    channelId: string;
+    masterId: string;
+    masterNickName: string;
+    participantUserIds: string[];
+    scheduledAt: string;
+    minutesBefore: number;  // 30 또는 5
+  }): Promise<{ notified: string[]; failed: string[] }> {
+    const { roomId, roomTopic, channelId, masterId, masterNickName, participantUserIds, scheduledAt, minutesBefore } = payload;
+
+    console.log(`[SSE] ========== handleMeetingReminder (${minutesBefore}분 전) ==========`);
+    console.log(`[SSE] roomId: ${roomId}, scheduledAt: ${scheduledAt}`);
+
+    const notified: string[] = [];
+    const failed: string[] = [];
+
+    // 전체 공개여도 방장에게는 알림 전송
+    const targetUserIds = participantUserIds && participantUserIds.length > 0
+      ? participantUserIds
+      : [masterId];
+
+    const event: NotificationEvent = {
+      type: 'meeting_reminder',
+      data: {
+        roomId,
+        meetingTopic: roomTopic,
+        channelId,
+        scheduledBy: masterNickName,
+        scheduledAt,
+        minutesBefore,
+        message: `${minutesBefore}분 후 회의가 시작됩니다`,
+      },
+    };
+
+    for (const userId of targetUserIds) {
+      const sent = this.sendToUser(userId, event);
+      if (sent) {
+        notified.push(userId);
+      } else {
+        failed.push(userId);
+      }
+    }
+
+    console.log(`[SSE] Meeting reminder (${minutesBefore}min) - notified: ${notified.length}, failed: ${failed.length}`);
+
+    // Push 알림도 전송
+    if (this.notificationsService) {
+      try {
+        const pushResult = await this.notificationsService.sendMeetingReminderPush({
+          userIds: targetUserIds,
+          roomId,
+          roomTopic,
+          minutesBefore,
+          scheduledAt,
+        });
+        this.logger.log(`[Push] Meeting reminder (${minutesBefore}min) - sent: ${pushResult.totalSent}, failed: ${pushResult.totalFailed}`);
+      } catch (error) {
+        this.logger.error(`[Push] Meeting reminder failed:`, error);
+      }
+    }
+
+    return { notified, failed };
+  }
+
+  /**
+   * 회의 시작 알림 (예약 시간 도달)
+   */
+  async handleMeetingStarted(payload: {
+    roomId: string;
+    roomTopic: string;
+    channelId: string;
+    masterId: string;
+    masterNickName: string;
+    participantUserIds: string[];
+  }): Promise<{ notified: string[]; failed: string[] }> {
+    const { roomId, roomTopic, channelId, masterId, masterNickName, participantUserIds } = payload;
+
+    console.log(`[SSE] ========== handleMeetingStarted ==========`);
+    console.log(`[SSE] roomId: ${roomId}`);
+
+    const notified: string[] = [];
+    const failed: string[] = [];
+
+    // 전체 공개여도 방장에게는 알림 전송
+    const targetUserIds = participantUserIds && participantUserIds.length > 0
+      ? participantUserIds
+      : [masterId];
+
+    const event: NotificationEvent = {
+      type: 'meeting_started',
+      data: {
+        roomId,
+        meetingTopic: roomTopic,
+        channelId,
+        startedBy: masterNickName,
+        startedAt: new Date().toISOString(),
+        message: '회의가 시작되었습니다. 지금 입장하세요!',
+        joinUrl: `https://aura.ai.kr/room/${roomId}`,
+      },
+    };
+
+    for (const userId of targetUserIds) {
+      const sent = this.sendToUser(userId, event);
+      if (sent) {
+        notified.push(userId);
+      } else {
+        failed.push(userId);
+      }
+    }
+
+    console.log(`[SSE] Meeting started - notified: ${notified.length}, failed: ${failed.length}`);
+
+    // Push 알림도 전송
+    if (this.notificationsService) {
+      try {
+        const pushResult = await this.notificationsService.sendMeetingStartedPush({
+          userIds: targetUserIds,
+          roomId,
+          roomTopic,
+        });
+        this.logger.log(`[Push] Meeting started - sent: ${pushResult.totalSent}, failed: ${pushResult.totalFailed}`);
+      } catch (error) {
+        this.logger.error(`[Push] Meeting started failed:`, error);
+      }
+    }
+
+    return { notified, failed };
+  }
+
+  /**
+   * 예약 취소 알림
+   */
+  async handleMeetingCancelled(payload: {
+    roomId: string;
+    roomTopic: string;
+    channelId: string;
+    masterId: string;
+    masterNickName: string;
+    participantUserIds: string[];
+  }): Promise<{ notified: string[]; failed: string[] }> {
+    const { roomId, roomTopic, channelId, masterId, masterNickName, participantUserIds } = payload;
+
+    console.log(`[SSE] ========== handleMeetingCancelled ==========`);
+    console.log(`[SSE] roomId: ${roomId}`);
+
+    const notified: string[] = [];
+    const failed: string[] = [];
+
+    if (!participantUserIds || participantUserIds.length === 0) {
+      return { notified, failed };
+    }
+
+    const event: NotificationEvent = {
+      type: 'meeting_cancelled',
+      data: {
+        roomId,
+        meetingTopic: roomTopic,
+        channelId,
+        cancelledBy: masterNickName,
+        cancelledAt: new Date().toISOString(),
+        message: '회의가 취소되었습니다',
+      },
+    };
+
+    for (const userId of participantUserIds) {
+      if (userId === masterId) continue;
+      const sent = this.sendToUser(userId, event);
+      if (sent) {
+        notified.push(userId);
+      } else {
+        failed.push(userId);
+      }
+    }
+
+    console.log(`[SSE] Meeting cancelled - notified: ${notified.length}, failed: ${failed.length}`);
+
+    // Push 알림도 전송
+    if (this.notificationsService) {
+      try {
+        const pushResult = await this.notificationsService.sendMeetingCancelledPush({
+          userIds: participantUserIds.filter(id => id !== masterId),
+          roomId,
+          roomTopic,
+          cancelledBy: masterNickName,
+        });
+        this.logger.log(`[Push] Meeting cancelled - sent: ${pushResult.totalSent}, failed: ${pushResult.totalFailed}`);
+      } catch (error) {
+        this.logger.error(`[Push] Meeting cancelled failed:`, error);
+      }
+    }
+
     return { notified, failed };
   }
 
